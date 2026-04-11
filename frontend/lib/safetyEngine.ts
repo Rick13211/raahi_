@@ -20,11 +20,12 @@ interface ScoreResult {
 // ─── Weight configuration ────────────────────────────────────────────────────
 
 const WEIGHTS = {
-  safeZones: 0.2,
-  reportDensity: 0.2,
-  timeOfDay: 0.1,
+  safeZones: 0.15,
+  reportDensity: 0.15,
+  historicalCrime: 0.20,
+  timeOfDay: 0.05,
   weather: 0.05,
-  lighting: 0.45,
+  lighting: 0.40,
 } as const;
 
 const NIGHT_PENALTY = 30; // penalty points during 23:00 – 05:00
@@ -89,14 +90,13 @@ async function getLightingFactor(
   try {
     const [south, west, north, east] = routeBBox(coords);
     // Overpass QL: count all nodes/ways tagged as street lamps within bbox
-    const query = `[out:json][timeout:10];
-(
+    const query = `[out:json][timeout:10];(
   node["highway"="street_lamp"](${south},${west},${north},${east});
   node["lit"="yes"](${south},${west},${north},${east});
 );
 out count;`;
 
-    const overpassUrl = "https://overpass-api.de/api/interpreter";
+    const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
     const res = await fetch(overpassUrl, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -257,6 +257,59 @@ function isNightTime(date: Date): boolean {
   return hour >= 23 || hour < 5;
 }
 
+/** Use Mapbox Reverse Geocoding to determine the District Name */
+async function getDistrictFromCoords(lng: number, lat: number): Promise<string | null> {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=district&access_token=${token}`);
+    const data = await res.json();
+    if (data.features && data.features.length > 0) {
+      return data.features[0].text.replace(/ district$/i, '').trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Hit Supabase crime_stats to calculate historical penalty weighting */
+async function getHistoricalCrimeFactor(district: string | null): Promise<{ factor: number; hasSevereCrime: boolean }> {
+  // 80 is our base "average" score when no data exists (innocent until proven guilty)
+  const FALLBACK = { factor: 80, hasSevereCrime: false };
+  if (!district || !hasSupabaseKeys) return FALLBACK;
+  
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('crime_stats')
+      .select('*')
+      .ilike('district', `%${district}%`)
+      .maybeSingle();
+
+    if (error || !data) return FALLBACK;
+
+    // Apply strict multipliers to violent crimes
+    const rawPenalty = 
+      (data.murder * 15) +
+      (data.attempt_to_murder * 10) +
+      (data.kidnapping * 12) +
+      (data.rape * 20) +
+      (data.attempt_to_rape * 12) +
+      (data.acid_attack * 20) +
+      (data.sexual_harras * 8) +
+      (data.stalking * 5) +
+      (data.hit_and_run * 5);
+
+    // Normalize: if rawPenalty hits 500, score bottoms out to 0
+    const factor = Math.max(0, Math.min(100, Math.round(100 - (rawPenalty / 5))));
+    const hasSevereCrime = (data.murder > 10) || (data.rape > 5) || (data.acid_attack > 2);
+    
+    return { factor, hasSevereCrime };
+  } catch {
+    return FALLBACK;
+  }
+}
+
 // ─── Main Scoring Function ──────────────────────────────────────────────────
 
 /**
@@ -320,7 +373,7 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   }
 
   // ── 5. Weather Factor ────────────────────────────────────────────────────
-  // Use the midpoint of the route for weather lookup
+  // Use the midpoint of the route for weather and district lookup
   const midIdx = Math.floor(sampled.length / 2);
   const [midLat, midLng] = sampled[midIdx];
   const weather = await getWeatherCondition(midLng, midLat);
@@ -330,6 +383,13 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
     reasonTags.push(`poor_weather_${weather.main.toLowerCase()}`);
   }
 
+  // ── NEW: Historical Crime Factor ─────────────────────────────────────────
+  const districtName = await getDistrictFromCoords(midLng, midLat);
+  const { factor: historicalCrimeFactor, hasSevereCrime } = await getHistoricalCrimeFactor(districtName);
+  if (hasSevereCrime || historicalCrimeFactor < 50) {
+    reasonTags.push("high_historical_crime_rate");
+  }
+
   // ── 6. Lighting Factor (Overpass street lamp density) ────────────────────
   const { factor: lightingFactor, isPoorrlyLit } = await getLightingFactor(sampled);
   if (isPoorrlyLit) {
@@ -337,14 +397,26 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   }
 
   // ── Weighted Sum ─────────────────────────────────────────────────────────
+  console.log("--- Safety Engine Score Breakdown ---");
+  console.log(`Safe Zone Factor (WT: ${WEIGHTS.safeZones}):`, safeZoneFactor);
+  console.log(`Report Density Factor (WT: ${WEIGHTS.reportDensity}):`, reportFactor);
+  console.log(`Historical Crime Factor (WT: ${WEIGHTS.historicalCrime}):`, historicalCrimeFactor);
+  console.log(`Time of Day Factor (WT: ${WEIGHTS.timeOfDay}):`, timeFactor);
+  console.log(`Weather Factor (WT: ${WEIGHTS.weather}):`, weatherFactor);
+  console.log(`Lighting Factor (WT: ${WEIGHTS.lighting}):`, lightingFactor);
+
   const raw =
     safeZoneFactor * WEIGHTS.safeZones +
     reportFactor * WEIGHTS.reportDensity +
+    historicalCrimeFactor * WEIGHTS.historicalCrime +
     timeFactor * WEIGHTS.timeOfDay +
     weatherFactor * WEIGHTS.weather +
     lightingFactor * WEIGHTS.lighting;
 
+  console.log("Raw Weighted Sum:", raw);
   const score = Math.round(Math.max(0, Math.min(100, raw)));
+  console.log("Final Capped Score:", score);
+  console.log("---------------------------------------");
 
   return { score, reasonTags };
 }
