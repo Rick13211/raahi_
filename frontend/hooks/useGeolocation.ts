@@ -12,11 +12,11 @@ export function useGeolocation() {
       return;
     }
 
-    // Configure positioning to be highly accurate
+    // Configure positioning to be highly accurate but fault-tolerant
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0,
+      timeout: 30000,       // Increased to 30s so the GPS hardware has time to lock
+      maximumAge: 60000,    // Allow up to a 60-second cached location to prevent immediate timeouts
     };
 
     // Callback when position updates
