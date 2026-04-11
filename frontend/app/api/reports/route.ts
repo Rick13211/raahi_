@@ -133,10 +133,14 @@ export async function GET(request: NextRequest) {
       // so we attempt a direct query
       console.error("[GET /api/reports] RPC error, attempting fallback:", error);
 
+      // Fallback: bounding box (±0.05° ≈ ~5 km) to avoid full-table scan
+      const degOffset = 0.05;
       const { data: fallbackData, error: fallbackError } = await supabaseAdmin
         .from("safety_reports")
-        .select("id, category, description, status, created_at, point")
-        .eq("status", "approved");
+        .select("id, category, description, status, created_at, lat, lng")
+        .eq("status", "approved")
+        .gte("lat", lat - degOffset).lte("lat", lat + degOffset)
+        .gte("lng", lng - degOffset).lte("lng", lng + degOffset);
 
       if (fallbackError) {
         return NextResponse.json(

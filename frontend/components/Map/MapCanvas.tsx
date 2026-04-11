@@ -122,24 +122,37 @@ export default function MapCanvas() {
           routes
             .map((route, originalIndex) => ({ route, originalIndex }))
             .sort((a, b) => {
+              // Render order: alternatives first, then active, safest on top
+              if (a.route.isSafest) return 1;
+              if (b.route.isSafest) return -1;
               if (a.originalIndex === activeRouteIndex) return 1;
               if (b.originalIndex === activeRouteIndex) return -1;
               return 0;
             })
             .map(({ route, originalIndex }) => {
               const isActive = originalIndex === activeRouteIndex;
+
+              // Color priority: safest → green, active → blue, alt → grey
+              let color = '#9ca3af';   // grey for alternatives
+              let weight = 3;
+              let dashArray: string | undefined = '8, 8';
+
+              if (isActive) {
+                color = '#2563eb';     // blue for user-selected
+                weight = 6;
+                dashArray = undefined;
+              }
+              if (route.isSafest) {
+                color = '#16a34a';     // green always wins for safest
+                weight = 6;
+                dashArray = undefined;
+              }
+
               return (
                 <Polyline
                   key={`route-${originalIndex}`}
                   positions={route.coordinates as [number, number][]}
-                  pathOptions={{
-                    color: isActive ? '#2563eb' : '#9ca3af',
-                    weight: isActive ? 6 : 4,
-                    opacity: isActive ? 0.9 : 0.6,
-                    lineCap: 'round',
-                    lineJoin: 'round',
-                    dashArray: isActive ? undefined : '10, 10'
-                  }}
+                  pathOptions={{ color, weight, opacity: 0.9, lineCap: 'round', lineJoin: 'round', dashArray }}
                 />
               );
             })

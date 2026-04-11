@@ -7,10 +7,13 @@ type Location = {
 };
 
 export type RouteData = {
-  duration: number; // in seconds
-  distance: number; // in meters
+  duration: number;            // in seconds
+  distance: number;            // in meters
   coordinates: [number, number][]; // Array of [lat, lng]
   isFastest: boolean;
+  isSafest: boolean;           // true for the highest safety-scored route
+  safetyScore: number;         // 0–100
+  reasonTags: string[];        // human-readable score explanation tags
 };
 
 type RouteState = {

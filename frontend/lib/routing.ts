@@ -1,9 +1,4 @@
-export interface RouteData {
-  duration: number;
-  distance: number;
-  coordinates: [number, number][];
-  isFastest: boolean;
-}
+import type { RouteData } from '@/lib/store';
 
 export interface LocationData {
   lat: number;
@@ -43,28 +38,43 @@ export async function fetchRouteData(startQuery: string, endQuery: string): Prom
     address: endData[0].display_name
   };
 
-  // 3. Fetch Route from OSRM
-  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startData[0].lon},${startData[0].lat};${endData[0].lon},${endData[0].lat}?alternatives=true&geometries=geojson&overview=full`;
+  // Call our safety scoring API — it handles OSRM + safety engine internally
+  const scoreRes = await fetch('/api/routes/score', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ origin, destination }),
+  });
+
+  if (!scoreRes.ok) {
+    throw new Error('Failed to fetch scored routes from safety engine.');
+  }
+
+  const scored: RouteData[] = await scoreRes.json();
+
+  return { origin, destination, routes: scored };
+}
+
+export async function getRoutesFromCoordinates(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): Promise<Omit<RouteData, 'isSafest' | 'safetyScore' | 'reasonTags'>[]> {
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?alternatives=true&geometries=geojson&overview=full`;
+
   console.log('Fetching from OSRM URL:', osrmUrl);
 
   const osrmRes = await fetch(osrmUrl);
   const osrmData = await osrmRes.json();
   console.log('OSRM Raw Response:', osrmData);
 
-  let routes: RouteData[] = [];
-  
-  if (osrmData && osrmData.routes) {
-    routes = osrmData.routes.map((r: any, idx: number) => ({
-      duration: Math.round(r.duration),
-      distance: Math.round(r.distance),
-      coordinates: r.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]),
-      isFastest: idx === 0
-    }));
-
-    console.log('Parsed Routes saved to store:', routes);
-  } else {
+  if (!osrmData?.routes) {
     console.warn('No routes found in OSRM response');
+    return [];
   }
 
-  return { origin, destination, routes };
+  return osrmData.routes.map((r: any, idx: number) => ({
+    duration: Math.round(r.duration),
+    distance: Math.round(r.distance),
+    coordinates: r.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]) as [number, number][],
+    isFastest: idx === 0,
+  }));
 }

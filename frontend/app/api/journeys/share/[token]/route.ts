@@ -42,7 +42,7 @@ export async function GET(
 
     const { data: waypoints, error: waypointsError } = await supabaseAdmin
       .from("journey_waypoints")
-      .select("id, point, recorded_at")
+      .select("id, recorded_at, lat, lng")
       .eq("journey_id", journey.id)
       .gte("recorded_at", twentyFourHoursAgo)
       .order("recorded_at", { ascending: true });

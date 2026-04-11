@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
-import { getRoutes } from "@/lib/routing";
+import { getRoutesFromCoordinates } from "@/lib/routing";
 import { scoreRoute } from "@/lib/safetyEngine";
 import type { ScoredRoute } from "@/types";
 
@@ -34,29 +34,39 @@ export async function POST(request: NextRequest) {
     const { origin, destination } = parsed.data;
 
     // Fetch alternative walking routes from OSRM
-    const routes = await getRoutes(origin, destination);
+    const routes = await getRoutesFromCoordinates(origin, destination);
 
     // Score each route in parallel
-    const scoredRoutes: ScoredRoute[] = await Promise.all(
-      routes.map(async (route) => {
+    const scored = await Promise.all(
+      routes.map(async (route, idx) => {
         const { score, reasonTags } = await scoreRoute({
-          coords: route.coords,
+          coords: route.coordinates,
           time: new Date(),
         });
 
         return {
-          geometry: route.geometry,
-          eta: Math.round(route.duration / 60), // seconds → minutes
+          // Leaflet-order coords for the map
+          coordinates: route.coordinates,
+          duration: route.duration,
+          distance: route.distance,
+          isFastest: idx === 0, // OSRM returns fastest first
+          isSafest: false,      // tagged after sort below
           safetyScore: score,
           reasonTags,
+          // GeoJSON geometry for any consumers that need it
+          geometry: {
+            type: "LineString" as const,
+            coordinates: route.coordinates.map(([lat, lng]) => [lng, lat])
+          },
         };
       })
     );
 
-    // Sort by safety score descending (safest first)
-    scoredRoutes.sort((a, b) => b.safetyScore - a.safetyScore);
+    // Sort descending by safety score, tag the winner
+    scored.sort((a, b) => b.safetyScore - a.safetyScore);
+    if (scored.length > 0) scored[0].isSafest = true;
 
-    return NextResponse.json(scoredRoutes);
+    return NextResponse.json(scored);
   } catch (error) {
     console.error("[POST /api/routes/score]", error);
     return NextResponse.json(

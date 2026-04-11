@@ -130,25 +130,36 @@ export default function MapPage() {
             const isActive = activeRouteIndex === idx;
             const minutes = Math.round(route.duration / 60);
             const km = (route.distance / 1000).toFixed(1);
+            const score = route.safetyScore ?? 0;
+
+            // Border and glow: safest = green, active = blue, default = grey
+            let cardBorder = 'border-[#e5e7eb] shadow-sm hover:border-[#d1d5db]';
+            if (route.isSafest) cardBorder = 'border-[#16a34a] border-2 shadow-[0_0_12px_rgba(22,163,74,0.15)]';
+            else if (isActive) cardBorder = 'border-[#2563eb] border-2 shadow-md';
+
+            // Score bar colour
+            const scoreColor = score >= 70 ? '#16a34a' : score >= 45 ? '#f59e0b' : '#ef4444';
 
             return (
               <div
                 key={idx}
                 onClick={() => setActiveRouteIndex(idx)}
-                className={`p-5 bg-white rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
-                  isActive 
-                  ? 'border-[#2563eb] shadow-md border-2' 
-                  : 'border-[#e5e7eb] shadow-sm hover:border-[#d1d5db]'
-                }`}
+                className={`p-5 bg-white rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${cardBorder}`}
               >
                 <div className="flex justify-between items-start mb-3 relative z-10">
-                  <div className="flex items-center gap-2">
-                    {route.isFastest ? (
-                      <div className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#059669]/10 text-[#059669] border border-[#059669]/20">
-                        Fastest Choice
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {route.isSafest && (
+                      <div className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#16a34a]/10 text-[#16a34a] border border-[#16a34a]/20">
+                        Safest Route
                       </div>
-                    ) : (
-                      <span className="text-sm font-bold text-[#6b7280]">Alternative Route</span>
+                    )}
+                    {route.isFastest && (
+                      <div className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#2563eb]/10 text-[#2563eb] border border-[#2563eb]/20">
+                        Fastest
+                      </div>
+                    )}
+                    {!route.isSafest && !route.isFastest && (
+                      <span className="text-sm font-bold text-[#6b7280]">Alternative</span>
                     )}
                   </div>
                   <span className={`text-sm font-bold ${isActive ? 'text-[#111827]' : 'text-[#6b7280]'}`}>
@@ -156,13 +167,27 @@ export default function MapPage() {
                   </span>
                 </div>
 
-                <div className="flex items-baseline gap-2 mb-2.5 relative z-10">
+                <div className="flex items-baseline gap-2 mb-3 relative z-10">
                   <span className={`text-3xl font-black tracking-tight ${isActive ? 'text-[#111827]' : 'text-[#6b7280]'}`}>
                     {km}
                   </span>
                   <span className={`text-xs font-semibold ${isActive ? 'text-[#2563eb]' : 'text-[#6b7280]'}`}>
-                    km Distance
+                    km
                   </span>
+                </div>
+
+                {/* Safety Score Bar */}
+                <div className="relative z-10">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#6b7280]">Safety Score</span>
+                    <span className="text-xs font-bold" style={{ color: scoreColor }}>{score}/100</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#f3f4f6] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${score}%`, backgroundColor: scoreColor }}
+                    />
+                  </div>
                 </div>
               </div>
             );

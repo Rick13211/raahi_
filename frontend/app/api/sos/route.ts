@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
 import { supabaseAdmin } from "@/lib/supabase";
-import twilio from "twilio";
-import sgMail from "@sendgrid/mail";
+
+// NOTE: Twilio & SendGrid are stubbed until credentials are configured.
+// Install when ready: npm install twilio @sendgrid/mail
+// Then add to .env.local: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+//   TWILIO_FROM_NUMBER, SENDGRID_API_KEY
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -12,22 +15,8 @@ const SOSRequestSchema = z.object({
   userId: z.string().uuid(),
 });
 
-// ─── Config ──────────────────────────────────────────────────────────────────
-
-function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) throw new Error("Twilio credentials not configured");
-  return twilio(sid, token);
-}
-
-function initSendGrid() {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  if (!apiKey) throw new Error("SendGrid API key not configured");
-  sgMail.setApiKey(apiKey);
-}
-
 // ─── Helper: extract Supabase auth user ──────────────────────────────────────
+
 
 async function getAuthUser(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -102,50 +91,17 @@ export async function POST(request: NextRequest) {
     const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
     const smsBody = `🚨 SOS ALERT from SafeStep AI!\nYour contact needs help. Their current location:\n${mapsLink}\n\nPlease check on them immediately or call emergency services.`;
 
-    // Initialize external services
-    const twilioClient = getTwilioClient();
-    initSendGrid();
-    const fromNumber = process.env.TWILIO_FROM_NUMBER!;
-
-    // Fire SMS and email in parallel for all contacts
-    const sendPromises: Promise<unknown>[] = [];
-
+    // ── STUB: Replace with real Twilio/SendGrid when credentials are ready ────
+    console.warn("[SOS STUB] Would send alerts to:", contacts);
+    console.warn("[SOS STUB] Message:", smsBody);
     for (const contact of contacts) {
-      // Determine if contact is phone or email
       if (contact.includes("@")) {
-        // Send email via SendGrid
-        sendPromises.push(
-          sgMail.send({
-            to: contact,
-            from: "sos@safestep.ai", // Must be a verified sender in SendGrid
-            subject: "🚨 SOS Alert — SafeStep AI Emergency",
-            text: smsBody,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
-                <h2 style="color: #dc2626;">🚨 SOS Emergency Alert</h2>
-                <p>Your contact has triggered an SOS alert on SafeStep AI and may need immediate help.</p>
-                <p><strong>📍 Their current location:</strong></p>
-                <p><a href="${mapsLink}" style="color: #2563eb; font-size: 16px;">${mapsLink}</a></p>
-                <p>Please check on them immediately or call emergency services.</p>
-                <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
-                <p style="color: #6b7280; font-size: 12px;">This is an automated alert from SafeStep AI.</p>
-              </div>
-            `,
-          })
-        );
+        console.log(`[SOS STUB] Email → ${contact}`);
       } else {
-        // Send SMS via Twilio
-        sendPromises.push(
-          twilioClient.messages.create({
-            body: smsBody,
-            from: fromNumber,
-            to: contact,
-          })
-        );
+        console.log(`[SOS STUB] SMS → ${contact}`);
       }
     }
-
-    await Promise.all(sendPromises);
+    // ─────────────────────────────────────────────────────────────────────────
 
     return NextResponse.json({
       sent: true,
