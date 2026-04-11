@@ -21,6 +21,9 @@ export default function MapPage() {
 
   const setOrigin = useRouteStore((state) => state.setOrigin);
   const setDestination = useRouteStore((state) => state.setDestination);
+  const routes = useRouteStore((state) => state.routes);
+  const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
+  const setActiveRouteIndex = useRouteStore((state) => state.setActiveRouteIndex);
 
   const handleRouteSearch = async () => {
     if (!startQuery.trim() || !endQuery.trim()) {
@@ -58,6 +61,30 @@ export default function MapPage() {
         lng: parseFloat(endData[0].lon),
         address: endData[0].display_name
       });
+
+      // 3. Fetch Route from OSRM
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startData[0].lon},${startData[0].lat};${endData[0].lon},${endData[0].lat}?alternatives=true&geometries=geojson&overview=full`;
+      console.log('Fetching from OSRM URL:', osrmUrl);
+      
+      const osrmRes = await fetch(osrmUrl);
+      const osrmData = await osrmRes.json();
+      console.log('OSRM Raw Response:', osrmData);
+      
+      if (osrmData && osrmData.routes) {
+        const parsedRoutes = osrmData.routes.map((r: any, idx: number) => ({
+          duration: Math.round(r.duration),
+          distance: Math.round(r.distance),
+          coordinates: r.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]),
+          isFastest: idx === 0
+        }));
+        console.log('Parsed Routes saved to store:', parsedRoutes);
+        
+        // Use Zustand properties to update DOM
+        useRouteStore.getState().setRoutes(parsedRoutes);
+        useRouteStore.getState().setActiveRouteIndex(0);
+      } else {
+        console.warn('No routes found in OSRM response');
+      }
 
     } catch (err: any) {
       setErrorMsg(err.message || 'Geocoding failed. Try being more specific.');
@@ -139,45 +166,48 @@ export default function MapPage() {
             <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
             <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Suggested Routes</span>
           </div>
-          
-          <div className="p-4 bg-zinc-900/40 rounded-2xl border border-emerald-500/30 hover:bg-zinc-800/60 transition-all cursor-pointer group relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-8 -mt-8 group-hover:bg-emerald-500/20 transition-colors" />
-            <div className="flex justify-between items-start mb-3 relative z-10">
-              <div className="flex items-center gap-2">
-                <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400">
-                  Safest Choice
+
+          {routes.map((route, idx) => {
+            const isActive = activeRouteIndex === idx;
+            const minutes = Math.round(route.duration / 60);
+            const km = (route.distance / 1000).toFixed(1);
+            
+            return (
+              <div 
+                key={idx}
+                onClick={() => setActiveRouteIndex(idx)}
+                className={`p-4 rounded-2xl border transition-all cursor-pointer group relative overflow-hidden ${
+                  isActive 
+                  ? 'bg-zinc-900/40 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+                  : 'bg-zinc-900/20 border-white/5 hover:border-cyan-500/20 hover:bg-zinc-800/40'
+                }`}
+              >
+                {isActive && (
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl -mr-8 -mt-8" />
+                )}
+                
+                <div className="flex justify-between items-start mb-3 relative z-10">
+                  <div className="flex items-center gap-2">
+                    {route.isFastest ? (
+                      <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-400">
+                        Fastest Choice
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium text-zinc-300">Alternative Route</span>
+                    )}
+                  </div>
+                  <span className={`text-sm font-semibold ${route.isFastest ? 'text-white' : 'text-zinc-400'}`}>
+                    {minutes} mins
+                  </span>
+                </div>
+                
+                <div className="flex items-baseline gap-2 mb-2 relative z-10">
+                   <span className="text-2xl font-bold text-white tracking-tight">{km}</span>
+                   <span className="text-xs font-medium text-zinc-400">km Distance</span>
                 </div>
               </div>
-              <span className="text-sm font-semibold">18 mins</span>
-            </div>
-
-            <div className="flex items-baseline gap-2 mb-2 relative z-10">
-              <span className="text-2xl font-bold text-white tracking-tight">92</span>
-              <span className="text-xs font-medium text-emerald-400">/100 Safety Score</span>
-            </div>
-
-            <p className="text-xs text-zinc-400 relative z-10 leading-relaxed">
-              Well-lit main streets. Passes by 2 police stations and 1 hospital. No recent hazards.
-            </p>
-          </div>
-
-          <div className="p-4 bg-zinc-900/20 rounded-2xl border border-white/5 hover:border-amber-500/20 hover:bg-zinc-800/40 transition-all cursor-pointer group">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-zinc-300">Fastest Route</span>
-              </div>
-              <span className="text-sm font-semibold text-amber-400">14 mins</span>
-            </div>
-
-            <div className="flex items-baseline gap-2 mb-2">
-              <span className="text-2xl font-bold text-zinc-300 tracking-tight">64</span>
-              <span className="text-xs font-medium text-amber-400">/100 Safety Score</span>
-            </div>
-
-            <p className="text-xs text-zinc-500 leading-relaxed">
-              Faster path, but includes poorly lit park area. 1 unverified community report ahead.
-            </p>
-          </div>
+            );
+          })}
         </div>
       </div>
 

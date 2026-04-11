@@ -115,34 +115,32 @@ export default function MapCanvas() {
 
         {/* Render Generated Routes */}
         {
-          [...routes].sort((a,b)=>{
-            if (routes.indexOf(a) === activeRouteIndex) return 1;
-            if (routes.indexOf(b) === activeRouteIndex) return -1;
-            return 0;})
-            .map((route, idx) => {
-            const isActive = idx === activeRouteIndex;
-          return (
-            <Polyline 
-              key={idx}
-              positions={route.coordinates}
-              pathOptions={{
-                color: isActive ? '#06b6d4' : '#52525b', // Cyan for active, Zinc for alt
-                weight: isActive ? 6 : 4,
-                opacity: isActive ? 0.9 : 0.6,
-                lineCap: 'round',
-                lineJoin: 'round',
-                dashArray: isActive ? undefined : '10, 10' // Dashed for alternatives
-              }}
-              // Ensure active route renders on top
-              eventHandlers={{
-                add: (e) => {
-                  if (isActive) e.target.bringToFront();
-                  else e.target.bringToBack();
-                }
-              }}
-            />
-          );
-        })}
+          // We sort the routes so the active one renders LAST (on top in SVG)
+          routes.map((route, originalIndex) => ({ route, originalIndex }))
+            .sort((a, b) => {
+              if (a.originalIndex === activeRouteIndex) return 1;
+              if (b.originalIndex === activeRouteIndex) return -1;
+              return 0;
+            })
+            .map(({ route, originalIndex }) => {
+              const isActive = originalIndex === activeRouteIndex;
+              console.log(`Rendering Polyline for Route ${originalIndex} | Points: ${route.coordinates.length} | IsActive: ${isActive}`);
+              return (
+                <Polyline 
+                  key={`route-${originalIndex}`}
+                  positions={route.coordinates as [number, number][]}
+                  pathOptions={{
+                    color: isActive ? '#06b6d4' : '#52525b', // Cyan for active, Zinc for alt
+                    weight: isActive ? 6 : 4,
+                    opacity: isActive ? 0.9 : 0.6,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    dashArray: isActive ? undefined : '10, 10' // Dashed for alternatives
+                  }}
+                />
+              );
+            })
+        }
 
         {/* Existing demo markers just for aesthetics */}
         {/* <Marker position={[28.62, 77.21]} icon={safeZoneIcon}>
