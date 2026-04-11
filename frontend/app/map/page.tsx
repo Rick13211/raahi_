@@ -2,10 +2,11 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouteStore } from '@/lib/store';
 import { fetchRouteData } from '@/lib/routing';
-import { LocateFixed } from 'lucide-react';
+import LocationAutocomplete from '@/components/UI/LocationAutocomplete';
+import type { SuggestionResult } from '@/components/UI/LocationAutocomplete';
 import RoutePanel from '@/components/Routing/RoutePanel';
 import SOSButton from '@/components/UI/SOSButton';
 import ReportModal from '@/components/Modals/ReportModal';
@@ -31,13 +32,49 @@ export default function MapPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
+  // Pre-resolved coordinates from autocomplete selection
+  // When a user picks a suggestion, we store the exact coords to avoid re-geocoding
+  const selectedOriginCoords = useRef<{ lat: number; lng: number } | null>(null);
+  const selectedDestCoords = useRef<{ lat: number; lng: number } | null>(null);
+
   const setOrigin = useRouteStore((state) => state.setOrigin);
   const setDestination = useRouteStore((state) => state.setDestination);
   const setRoutes = useRouteStore((state) => state.setRoutes);
   const setActiveRouteIndex = useRouteStore((state) => state.setActiveRouteIndex);
   const userLocation = useRouteStore((state) => state.userLocation);
 
-  const handleUseCurrentLocation = async () => {
+  // Proximity bias for autocomplete — use user location or Delhi center
+  const proximity: [number, number] = userLocation
+    ? [userLocation.lng, userLocation.lat]
+    : [77.2090, 28.6139];
+
+  // ── Handle autocomplete suggestion selection ─────────────────────────────
+  const handleStartSelect = useCallback((suggestion: SuggestionResult) => {
+    selectedOriginCoords.current = {
+      lng: suggestion.center[0],
+      lat: suggestion.center[1],
+    };
+  }, []);
+
+  const handleDestSelect = useCallback((suggestion: SuggestionResult) => {
+    selectedDestCoords.current = {
+      lng: suggestion.center[0],
+      lat: suggestion.center[1],
+    };
+  }, []);
+
+  // Clear pre-resolved coords when user types manually
+  const handleStartChange = useCallback((val: string) => {
+    setStartQuery(val);
+    selectedOriginCoords.current = null; // user is typing, invalidate pre-resolved coords
+  }, []);
+
+  const handleDestChange = useCallback((val: string) => {
+    setEndQuery(val);
+    selectedDestCoords.current = null;
+  }, []);
+
+  const handleUseCurrentLocation = useCallback(async () => {
     if (!userLocation) {
       setErrorMsg('Waiting for precise GPS location from your device...');
       return;
@@ -50,17 +87,17 @@ export default function MapPage() {
       if (!res.ok) throw new Error('Reverse geocoding failed');
       
       const data = await res.json();
-      if (data && data.display_name) {
-        setStartQuery(data.display_name);
-      } else {
-        setStartQuery(`${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`);
-      }
+      const address = data?.display_name ?? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`;
+      setStartQuery(address);
+      selectedOriginCoords.current = { lat: userLocation.lat, lng: userLocation.lng };
     } catch (err) {
-      setStartQuery(`${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`);
+      const fallback = `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`;
+      setStartQuery(fallback);
+      selectedOriginCoords.current = { lat: userLocation.lat, lng: userLocation.lng };
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userLocation]);
 
   const handleRouteSearch = async () => {
     if (!startQuery.trim() || !endQuery.trim()) {
@@ -72,13 +109,50 @@ export default function MapPage() {
     setErrorMsg('');
 
     try {
-      const result = await fetchRouteData(startQuery, endQuery);
-      
-      setOrigin(result.origin);
-      setDestination(result.destination);
-      
-      if (result.routes && result.routes.length > 0) {
-        setRoutes(result.routes);
+      // 1. Build Origin — use pre-resolved Mapbox coords if available, else Nominatim
+      let origin = selectedOriginCoords.current ? { ...selectedOriginCoords.current, address: startQuery } : null;
+      if (!origin) {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(startQuery)}`);
+        const data = await res.json();
+        if (!data || data.length === 0) throw new Error('Could not find start location.');
+        origin = {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon),
+          address: data[0].display_name
+        };
+      }
+
+      // 2. Build Destination — use pre-resolved Mapbox coords if available, else Nominatim
+      let dest = selectedDestCoords.current ? { ...selectedDestCoords.current, address: endQuery } : null;
+      if (!dest) {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(endQuery)}`);
+        const data = await res.json();
+        if (!data || data.length === 0) throw new Error('Could not find destination.');
+        dest = {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon),
+          address: data[0].display_name
+        };
+      }
+
+      setOrigin(origin);
+      setDestination(dest);
+
+      // 3. Score the route and get safety data
+      const scoreRes = await fetch('/api/routes/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origin, destination: dest }),
+      });
+
+      if (!scoreRes.ok) {
+        throw new Error('Failed to fetch scored routes from safety engine.');
+      }
+
+      const scored = await scoreRes.json();
+
+      if (scored && scored.length > 0) {
+        setRoutes(scored);
         setActiveRouteIndex(0);
       } else {
         setErrorMsg('No routes found between these locations.');
@@ -102,44 +176,30 @@ export default function MapPage() {
         {/* Mobile Grab Handle */}
         <div className="w-12 h-1.5 bg-[#e5e7eb] rounded-full mx-auto mb-6 md:hidden" />
 
-        {/* Search Bar Section */}
+        {/* Search Bar Section — Autocomplete inputs */}
         <div className="space-y-4 mb-4">
-          <div>
-            <label className="text-[11px] font-bold text-[#6b7280] mb-1.5 block uppercase tracking-wider">Start Location</label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[#2563eb] ring-2 ring-[#2563eb]/20" />
-              <input
-                type="text"
-                value={startQuery}
-                onChange={(e) => setStartQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
-                placeholder="Enter start point..."
-                className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-12 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
-              />
-              <button
-                type="button"
-                onClick={handleUseCurrentLocation}
-                title="Use Current Location"
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-[#2563eb] hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center bg-white border border-gray-200 shadow-sm"
-              >
-                <LocateFixed className="w-[18px] h-[18px]" />
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] font-bold text-[#6b7280] mb-1.5 block uppercase tracking-wider">Destination</label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-sm bg-[#111827] ring-2 ring-[#e5e7eb]" />
-              <input
-                type="text"
-                value={endQuery}
-                onChange={(e) => setEndQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
-                placeholder="Where to?"
-                className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-4 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
-              />
-            </div>
-          </div>
+          <LocationAutocomplete
+            value={startQuery}
+            onChange={handleStartChange}
+            onSelect={handleStartSelect}
+            onEnter={handleRouteSearch}
+            label="Start Location"
+            icon="start"
+            placeholder="Enter start point..."
+            showLocateButton
+            onLocateClick={handleUseCurrentLocation}
+            proximity={proximity}
+          />
+          <LocationAutocomplete
+            value={endQuery}
+            onChange={handleDestChange}
+            onSelect={handleDestSelect}
+            onEnter={handleRouteSearch}
+            label="Destination"
+            icon="end"
+            placeholder="Where to?"
+            proximity={proximity}
+          />
         </div>
 
         {/* Error Banner */}
