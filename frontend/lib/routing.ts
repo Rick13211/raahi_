@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import type { RouteData } from '@/lib/store';
 
 export interface LocationData {

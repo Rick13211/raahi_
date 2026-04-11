@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import { create } from 'zustand';
 
 type Location = {

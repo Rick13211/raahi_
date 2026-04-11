@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // ─── Browser-safe client (anon key, respects RLS) ───────────────────────────

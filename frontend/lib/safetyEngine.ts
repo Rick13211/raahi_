@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import { supabaseAdmin, hasSupabaseKeys } from "@/lib/supabase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import { useEffect, useState } from 'react';
 import { useRouteStore } from '@/lib/store';
 
