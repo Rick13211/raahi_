@@ -123,15 +123,21 @@ out count;`;
   }
 }
 
-/** Pick every Nth coordinate from a route to limit PostGIS queries */
+/** Dynamically pick evenly spaced coordinates to limit PostGIS queries to a strict maximum (e.g., 50 points) */
 function sampleCoords(
   coords: [number, number][],
-  n: number
+  maxPoints: number = 50
 ): [number, number][] {
+  if (coords.length <= maxPoints) return coords;
+
   const sampled: [number, number][] = [];
-  for (let i = 0; i < coords.length; i += n) {
-    sampled.push(coords[i]);
+  const step = coords.length / maxPoints;
+  
+  for (let i = 0; i < maxPoints; i++) {
+    const index = Math.floor(i * step);
+    sampled.push(coords[index]);
   }
+  
   const last = coords[coords.length - 1];
   if (sampled[sampled.length - 1] !== last) {
     sampled.push(last);
@@ -269,8 +275,8 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   const { coords, time } = input;
   const reasonTags: string[] = [];
 
-  // Sample every 5th coordinate to limit DB queries
-  const sampled = sampleCoords(coords, 5);
+  // Sample dynamically up to 50 coordinates to prevent 10,000+ DB queries on 600km routes
+  const sampled = sampleCoords(coords, 50);
 
   // ── 1. Query PostGIS for reports & safe zones at sampled points ──────────
 
