@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useRouteStore } from '@/lib/store';
 import { fetchRouteData } from '@/lib/routing';
 import { LocateFixed } from 'lucide-react';
+import AutocompleteInput from '@/components/Map/AutocompleteInput';
 
 const Map = dynamic(() => import('@/components/Map/MapCanvas'), {
   ssr: false,
@@ -97,39 +98,32 @@ export default function MapPage() {
         <div className="space-y-4 mb-4">
           <div>
             <label className="text-[11px] font-bold text-[#6b7280] mb-1.5 block uppercase tracking-wider">Start Location</label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[#2563eb] ring-2 ring-[#2563eb]/20" />
-              <input
-                type="text"
-                value={startQuery}
-                onChange={(e) => setStartQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
-                placeholder="Enter start point..."
-                className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-12 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
-              />
+            <AutocompleteInput
+              value={startQuery}
+              onChange={setStartQuery}
+              onEnter={handleRouteSearch}
+              placeholder="Enter start point..."
+              isStart={true}
+            >
               <button
                 type="button"
                 onClick={handleUseCurrentLocation}
                 title="Use Current Location"
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-[#2563eb] hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center bg-white border border-gray-200 shadow-sm"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-[#2563eb] hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center bg-white border border-gray-200 shadow-sm z-10"
               >
                 <LocateFixed className="w-[18px] h-[18px]" />
               </button>
-            </div>
+            </AutocompleteInput>
           </div>
           <div>
             <label className="text-[11px] font-bold text-[#6b7280] mb-1.5 block uppercase tracking-wider">Destination</label>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-sm bg-[#111827] ring-2 ring-[#e5e7eb]" />
-              <input
-                type="text"
-                value={endQuery}
-                onChange={(e) => setEndQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
-                placeholder="Where to?"
-                className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-4 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
-              />
-            </div>
+            <AutocompleteInput
+              value={endQuery}
+              onChange={setEndQuery}
+              onEnter={handleRouteSearch}
+              placeholder="Where to?"
+              isStart={false}
+            />
           </div>
         </div>
 
