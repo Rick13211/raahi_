@@ -1,10 +1,12 @@
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useRouteStore } from '@/lib/store';
+import { useEffect } from 'react';
 
-// Fix typical Next.js Leaflet icon bug with SVG inline to avoid requiring file-loader
+// Custom icons
 const safeZoneIcon = L.divIcon({
   html: `<div style="background-color: #10b981; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(16,185,129,0.5);"></div>`,
   className: 'custom-leaflet-icon',
@@ -19,32 +21,91 @@ const hazardIcon = L.divIcon({
   iconAnchor: [8, 8]
 });
 
+// For user origin and destination points
+const startPointIcon = L.divIcon({
+  html: `<div style="background-color: #10b981; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #064e3b; box-shadow: 0 0 15px rgba(16,185,129,0.8);"></div>`,
+  className: 'custom-leaflet-icon cursor-pointer',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
+});
+
+const endPointIcon = L.divIcon({
+  html: `<div style="background-color: #06b6d4; width: 20px; height: 20px; border-radius: 4px; border: 3px solid #164e63; box-shadow: 0 0 15px rgba(6,182,212,0.8); transform: rotate(45deg);"></div>`,
+  className: 'custom-leaflet-icon cursor-pointer',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
+});
+
+// Component to dynamically fit bounds when origin/destination changes
+function MapBoundsManager() {
+  const map = useMap();
+  const origin = useRouteStore((state) => state.origin);
+  const destination = useRouteStore((state) => state.destination);
+
+  useEffect(() => {
+    if (origin && destination) {
+      const bounds = L.latLngBounds([
+        [origin.lat, origin.lng],
+        [destination.lat, destination.lng]
+      ]);
+      map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+    } else if (origin) {
+      map.flyTo([origin.lat, origin.lng], 14, { animate: true, duration: 1.5 });
+    }
+  }, [origin, destination, map]);
+
+  return null;
+}
+
 export default function MapCanvas() {
+  const origin = useRouteStore((state) => state.origin);
+  const destination = useRouteStore((state) => state.destination);
+
   return (
     <div className="w-full h-full relative z-0 bg-zinc-950">
       <MapContainer 
-        center={[51.52, -0.1]} 
-        zoom={14} 
+        center={[28.6139, 77.2090]} // Default to New Delhi coordinates
+        zoom={12} 
         scrollWheelZoom={true} 
         style={{ height: '100%', width: '100%', zIndex: 0 }}
         zoomControl={false}
       >
+        <MapBoundsManager />
+        
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <ZoomControl position="bottomright" />
         
-        {/* Sample Safe Zone Marker */}
-        <Marker position={[51.52, -0.1]} icon={safeZoneIcon}>
+        {/* Origin Marker */}
+        {origin && (
+          <Marker position={[origin.lat, origin.lng]} icon={startPointIcon}>
+             <Popup className="font-sans text-sm font-medium">
+                <span className="text-zinc-500 text-xs block uppercase">Start</span>
+                <span className="text-black block max-w-xs">{origin.address}</span>
+             </Popup>
+          </Marker>
+        )}
+
+        {/* Destination Marker */}
+        {destination && (
+          <Marker position={[destination.lat, destination.lng]} icon={endPointIcon}>
+             <Popup className="font-sans text-sm font-medium">
+                <span className="text-zinc-500 text-xs block uppercase">Destination</span>
+                <span className="text-black block max-w-xs">{destination.address}</span>
+             </Popup>
+          </Marker>
+        )}
+
+        {/* Existing demo markers just for aesthetics */}
+        <Marker position={[28.62, 77.21]} icon={safeZoneIcon}>
           <Popup className="font-sans font-medium text-sm">
             <span className="text-emerald-600 block mb-1">Safe Zone</span>
             <span className="text-zinc-600 font-normal">24/7 Security Present</span>
           </Popup>
         </Marker>
-        
-        {/* Sample Hazard Marker */}
-        <Marker position={[51.525, -0.09]} icon={hazardIcon}>
+        <Marker position={[28.615, 77.2]} icon={hazardIcon}>
           <Popup className="font-sans font-medium text-sm">
             <span className="text-amber-600 block mb-1">Community Alert</span>
             <span className="text-zinc-600 font-normal">Broken streetlights reported</span>
