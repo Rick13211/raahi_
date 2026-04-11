@@ -1,6 +1,6 @@
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useRouteStore } from '@/lib/store';
@@ -41,18 +41,32 @@ function MapBoundsManager() {
   const map = useMap();
   const origin = useRouteStore((state) => state.origin);
   const destination = useRouteStore((state) => state.destination);
+  const routes = useRouteStore((state) => state.routes);
+  const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
 
-  useEffect(() => {
-    if (origin && destination) {
-      const bounds = L.latLngBounds([
-        [origin.lat, origin.lng],
-        [destination.lat, destination.lng]
-      ]);
+useEffect(() => {
+  let bounds: L.LatLngBounds | null = null;
+  
+  if (routes.length > 0 && routes[activeRouteIndex]?.coordinates?.length > 0) {
+    console.log(routes[activeRouteIndex].coordinates);
+    bounds = L.latLngBounds(routes[activeRouteIndex].coordinates);
+  } else if (origin && destination) {
+    bounds = L.latLngBounds([
+      [origin.lat, origin.lng],
+      [destination.lat, destination.lng]
+    ]);
+  }
+
+  const timer = setTimeout(() => {
+    if (bounds && map) {
       map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
     } else if (origin) {
       map.flyTo([origin.lat, origin.lng], 14, { animate: true, duration: 1.5 });
     }
-  }, [origin, destination, map]);
+  }, 100);
+
+  return () => clearTimeout(timer); // Critical cleanup
+}, [origin, destination, routes, activeRouteIndex, map]);
 
   return null;
 }
@@ -60,11 +74,12 @@ function MapBoundsManager() {
 export default function MapCanvas() {
   const origin = useRouteStore((state) => state.origin);
   const destination = useRouteStore((state) => state.destination);
-
+  const routes = useRouteStore((state) => state.routes);
+  const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
   return (
     <div className="w-full h-full relative z-0 bg-zinc-950">
       <MapContainer 
-        center={[28.6139, 77.2090]} // Default to New Delhi coordinates
+        center={[28.6139, 77.2090]}
         zoom={12} 
         scrollWheelZoom={true} 
         style={{ height: '100%', width: '100%', zIndex: 0 }}
@@ -98,8 +113,39 @@ export default function MapCanvas() {
           </Marker>
         )}
 
+        {/* Render Generated Routes */}
+        {
+          [...routes].sort((a,b)=>{
+            if (routes.indexOf(a) === activeRouteIndex) return 1;
+            if (routes.indexOf(b) === activeRouteIndex) return -1;
+            return 0;})
+            .map((route, idx) => {
+            const isActive = idx === activeRouteIndex;
+          return (
+            <Polyline 
+              key={idx}
+              positions={route.coordinates}
+              pathOptions={{
+                color: isActive ? '#06b6d4' : '#52525b', // Cyan for active, Zinc for alt
+                weight: isActive ? 6 : 4,
+                opacity: isActive ? 0.9 : 0.6,
+                lineCap: 'round',
+                lineJoin: 'round',
+                dashArray: isActive ? undefined : '10, 10' // Dashed for alternatives
+              }}
+              // Ensure active route renders on top
+              eventHandlers={{
+                add: (e) => {
+                  if (isActive) e.target.bringToFront();
+                  else e.target.bringToBack();
+                }
+              }}
+            />
+          );
+        })}
+
         {/* Existing demo markers just for aesthetics */}
-        <Marker position={[28.62, 77.21]} icon={safeZoneIcon}>
+        {/* <Marker position={[28.62, 77.21]} icon={safeZoneIcon}>
           <Popup className="font-sans font-medium text-sm">
             <span className="text-emerald-600 block mb-1">Safe Zone</span>
             <span className="text-zinc-600 font-normal">24/7 Security Present</span>
@@ -110,7 +156,7 @@ export default function MapCanvas() {
             <span className="text-amber-600 block mb-1">Community Alert</span>
             <span className="text-zinc-600 font-normal">Broken streetlights reported</span>
           </Popup>
-        </Marker>
+        </Marker> */}
       </MapContainer>
     </div>
   );

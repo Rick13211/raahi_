@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouteStore } from '@/lib/store';
 
-const Map = dynamic(() => import('@/components/Map/MapCanvas'), { 
+const Map = dynamic(() => import('@/components/Map/MapCanvas'), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-emerald-400">
@@ -18,7 +18,7 @@ export default function MapPage() {
   const [endQuery, setEndQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  
+
   const setOrigin = useRouteStore((state) => state.setOrigin);
   const setDestination = useRouteStore((state) => state.setDestination);
 
@@ -35,7 +35,7 @@ export default function MapPage() {
       // 1. Geocode Start Location
       const startRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(startQuery)}`);
       const startData = await startRes.json();
-      
+
       // 2. Geocode Destination Location
       const endRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(endQuery)}`);
       const endData = await endRes.json();
@@ -58,7 +58,7 @@ export default function MapPage() {
         lng: parseFloat(endData[0].lon),
         address: endData[0].display_name
       });
-      
+
     } catch (err: any) {
       setErrorMsg(err.message || 'Geocoding failed. Try being more specific.');
     } finally {
@@ -78,7 +78,7 @@ export default function MapPage() {
           </div>
           <span className="text-xl font-bold tracking-tight">SafeStep</span>
         </Link>
-        
+
         {/* Mobile Grab Handle */}
         <div className="w-12 h-1.5 bg-zinc-800 rounded-full mx-auto mb-6 md:hidden" />
 
@@ -87,29 +87,29 @@ export default function MapPage() {
           <div>
             <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block uppercase tracking-wider">Start Location</label>
             <div className="relative">
-               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-500 border border-emerald-900" />
-               <input 
-                 type="text" 
-                 value={startQuery}
-                 onChange={(e) => setStartQuery(e.target.value)}
-                 onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
-                 placeholder="Enter start point..." 
-                 className="w-full bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
-               />
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-500 border border-emerald-900" />
+              <input
+                type="text"
+                value={startQuery}
+                onChange={(e) => setStartQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
+                placeholder="Enter start point..."
+                className="w-full bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
+              />
             </div>
           </div>
           <div>
             <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block uppercase tracking-wider">Destination</label>
             <div className="relative">
-               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-sm bg-cyan-500 border border-cyan-900" />
-               <input 
-                 type="text" 
-                 value={endQuery}
-                 onChange={(e) => setEndQuery(e.target.value)}
-                 onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
-                 placeholder="Where to?" 
-                 className="w-full bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-4 py-3.5 text-sm focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder:text-zinc-600"
-               />
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-sm bg-cyan-500 border border-cyan-900" />
+              <input
+                type="text"
+                value={endQuery}
+                onChange={(e) => setEndQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
+                placeholder="Where to?"
+                className="w-full bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-4 py-3.5 text-sm focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder:text-zinc-600"
+              />
             </div>
           </div>
         </div>
@@ -120,7 +120,7 @@ export default function MapPage() {
           </div>
         )}
 
-        <button 
+        <button
           onClick={handleRouteSearch}
           disabled={isLoading}
           className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-emerald-500/50 disabled:cursor-not-allowed text-black font-semibold tracking-wide rounded-xl py-4 transition-all shadow-lg shadow-emerald-500/20 mb-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
@@ -139,7 +139,7 @@ export default function MapPage() {
             <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
             <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Suggested Routes</span>
           </div>
-
+          
           <div className="p-4 bg-zinc-900/40 rounded-2xl border border-emerald-500/30 hover:bg-zinc-800/60 transition-all cursor-pointer group relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-8 -mt-8 group-hover:bg-emerald-500/20 transition-colors" />
             <div className="flex justify-between items-start mb-3 relative z-10">
@@ -150,17 +150,17 @@ export default function MapPage() {
               </div>
               <span className="text-sm font-semibold">18 mins</span>
             </div>
-            
+
             <div className="flex items-baseline gap-2 mb-2 relative z-10">
-               <span className="text-2xl font-bold text-white tracking-tight">92</span>
-               <span className="text-xs font-medium text-emerald-400">/100 Safety Score</span>
+              <span className="text-2xl font-bold text-white tracking-tight">92</span>
+              <span className="text-xs font-medium text-emerald-400">/100 Safety Score</span>
             </div>
-            
+
             <p className="text-xs text-zinc-400 relative z-10 leading-relaxed">
-               Well-lit main streets. Passes by 2 police stations and 1 hospital. No recent hazards.
+              Well-lit main streets. Passes by 2 police stations and 1 hospital. No recent hazards.
             </p>
           </div>
-          
+
           <div className="p-4 bg-zinc-900/20 rounded-2xl border border-white/5 hover:border-amber-500/20 hover:bg-zinc-800/40 transition-all cursor-pointer group">
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-2">
@@ -168,14 +168,14 @@ export default function MapPage() {
               </div>
               <span className="text-sm font-semibold text-amber-400">14 mins</span>
             </div>
-            
+
             <div className="flex items-baseline gap-2 mb-2">
-               <span className="text-2xl font-bold text-zinc-300 tracking-tight">64</span>
-               <span className="text-xs font-medium text-amber-400">/100 Safety Score</span>
+              <span className="text-2xl font-bold text-zinc-300 tracking-tight">64</span>
+              <span className="text-xs font-medium text-amber-400">/100 Safety Score</span>
             </div>
-            
+
             <p className="text-xs text-zinc-500 leading-relaxed">
-               Faster path, but includes poorly lit park area. 1 unverified community report ahead.
+              Faster path, but includes poorly lit park area. 1 unverified community report ahead.
             </p>
           </div>
         </div>
@@ -184,7 +184,7 @@ export default function MapPage() {
       {/* Map Area */}
       <div className="flex-1 w-full h-[45vh] md:h-full relative order-1 md:order-2">
         <Map />
-        
+
         {/* Floating SOS Button */}
         <button className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-[1000] w-16 h-16 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center text-white shadow-xl shadow-red-500/30 transition-all hover:scale-105 active:scale-95 border-2 border-red-400/50 focus:outline-none focus:ring-4 focus:ring-red-500/50">
           <span className="font-bold text-base tracking-widest">SOS</span>
