@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 // ─── Shared TypeScript interfaces for SafeStep AI ───
 
 /** A geographic coordinate pair */

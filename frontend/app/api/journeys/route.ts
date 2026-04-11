@@ -1,3 +1,4 @@
+// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
 import { supabaseAdmin } from "@/lib/supabase";

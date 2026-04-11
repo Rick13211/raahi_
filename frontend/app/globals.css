@@ -24,3 +24,59 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ✅ MAPBOX CONVERSION — Tailwind reset conflict fixes */
+/* Tailwind's preflight sets box-sizing: border-box on everything, which breaks
+   Mapbox GL control button sizing. Restore content-box for controls. */
+.mapboxgl-ctrl button {
+  box-sizing: content-box;
+}
+
+.mapboxgl-ctrl-group {
+  overflow: visible;
+}
+
+/* ✅ MAPBOX CONVERSION — Attribution must remain visible (Mapbox ToS) */
+.mapboxgl-ctrl-attrib {
+  display: block !important;
+  visibility: visible !important;
+  font-size: 10px !important;
+  opacity: 0.6;
+}
+
+.mapboxgl-ctrl-attrib:hover {
+  opacity: 1;
+}
+
+/* ✅ MAPBOX CONVERSION — Popup styling to match Raahi design system */
+.raahi-popup .mapboxgl-popup-content {
+  padding: 10px 14px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e5e7eb;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.raahi-popup .mapboxgl-popup-tip {
+  border-top-color: #ffffff;
+}
+
+.raahi-popup .mapboxgl-popup-close-button {
+  display: none;
+}
+
+/* ✅ MAPBOX CONVERSION — Pulsing animation for live location marker */
+@keyframes mapbox-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  75%, 100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.mapbox-ping-animation {
+  animation: mapbox-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
