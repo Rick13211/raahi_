@@ -4,7 +4,9 @@ import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap, Polyline }
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useRouteStore } from '@/lib/store';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { LocateFixed } from 'lucide-react';
 
 // Custom icons
 const safeZoneIcon = L.divIcon({
@@ -19,6 +21,19 @@ const hazardIcon = L.divIcon({
   className: 'custom-leaflet-icon',
   iconSize: [24, 24],
   iconAnchor: [12, 12]
+});
+
+// For user origin and destination points
+const liveLocationIcon = L.divIcon({
+  html: `
+    <div class="relative w-5 h-5 flex items-center justify-center">
+      <div class="absolute inset-0 bg-blue-500 rounded-full opacity-40 animate-ping"></div>
+      <div class="absolute w-3 h-3 bg-blue-600 border-[2px] border-white rounded-full shadow-md z-10"></div>
+    </div>
+  `,
+  className: 'custom-leaflet-icon',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10]
 });
 
 // For user origin and destination points
@@ -43,6 +58,9 @@ function MapBoundsManager() {
   const destination = useRouteStore((state) => state.destination);
   const routes = useRouteStore((state) => state.routes);
   const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
+  const userLocation = useRouteStore((state) => state.userLocation);
+
+  const [hasInitialPanned, setHasInitialPanned] = useState(false);
 
   useEffect(() => {
     let bounds: L.LatLngBounds | null = null;
@@ -61,13 +79,35 @@ function MapBoundsManager() {
         map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
       } else if (origin) {
         map.flyTo([origin.lat, origin.lng], 14, { animate: true, duration: 1.5 });
+      } else if (userLocation && !hasInitialPanned) {
+        // First boot with geolocation
+        map.flyTo([userLocation.lat, userLocation.lng], 14, { animate: true, duration: 1.5 });
+        setHasInitialPanned(true);
       }
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [origin, destination, routes, activeRouteIndex, map]);
+  }, [origin, destination, routes, activeRouteIndex, map, userLocation, hasInitialPanned]);
 
   return null;
+}
+
+// Locate Me Button
+function LocateControl() {
+  const map = useMap();
+  const userLocation = useRouteStore((state) => state.userLocation);
+
+  if (!userLocation) return null;
+
+  return (
+    <button
+      onClick={() => map.flyTo([userLocation.lat, userLocation.lng], 16, { animate: true, duration: 1 })}
+      className="absolute bottom-28 right-3 z-[1000] w-10 h-10 bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.1)] border border-gray-200 flex items-center justify-center text-gray-700 hover:text-blue-600 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all active:scale-95"
+      title="Locate Me"
+    >
+      <LocateFixed className="w-5 h-5" />
+    </button>
+  );
 }
 
 export default function MapCanvas() {
@@ -75,6 +115,10 @@ export default function MapCanvas() {
   const destination = useRouteStore((state) => state.destination);
   const routes = useRouteStore((state) => state.routes);
   const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
+  const userLocation = useRouteStore((state) => state.userLocation);
+
+  // Mount the geolocation listener
+  useGeolocation();
 
   return (
     <div className="w-full h-full relative z-0 bg-[#f9fafb]">
@@ -92,6 +136,19 @@ export default function MapCanvas() {
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
         <ZoomControl position="bottomright" />
+        <LocateControl />
+
+        {/* Live User Location Marker */}
+        {userLocation && (
+          <Marker position={[userLocation.lat, userLocation.lng]} icon={liveLocationIcon}>
+            <Popup className="font-sans shadow-lg rounded-xl border-0">
+              <div className="px-1 py-0.5">
+                <span className="text-blue-600 text-[10px] font-bold block uppercase tracking-wider mb-1">Live</span>
+                <span className="text-slate-800 font-semibold text-sm block max-w-[200px] leading-tight">Your exact position</span>
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
         {/* Origin Marker */}
         {origin && (

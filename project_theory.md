@@ -57,5 +57,17 @@ Where each variable evaluates to a 0–100 sub-score, weighted by importance:
 
 ---
 
-## 4. Key Takeaways
-Your project acts as an infrastructural bridge. It combines standard shortest-path networking constructs (Dijkstra’s algorithm within OSRM) with spatial analytical overlays (PostGIS `ST_DWithin`) and live OpenStreetMap data (Overpass QL) to mathematically optimize routes for survival and security rather than pure speed.
+## 4. Real-Time Geolocation Tracking
+Navigational systems require constant spatial awareness to guide the user effectively. Instead of building expensive polling architectures, Raahi handles this via an event-driven hardware bridge.
+
+**Theoretical Purpose:** Hooks into the device's physical GPS radio to securely stream latitude/longitude coordinates to the browser continuously without refreshing the application state manually.
+**How it Operates:**
+1.  **Hardware API Bridge:** The custom `useGeolocation()` hook binds natively to the W3C HTML5 `navigator.geolocation.watchPosition` API.
+2.  **High-Accuracy Streaming:** We explicitly request `{ enableHighAccuracy: true }` so the device favors physical GPS chips over loose IP-based triangulation.
+3.  **Global Store Pipeline:** Every time the W3C API fires a new coordinate event, it pipes exactly through the Zustand global store dispatcher (`setUserLocation`).
+4.  **Reactive Rendering:** The `MapCanvas` component strictly subscribes to the Zustand state. As the exact position ticks across the grid, the React virtual DOM efficiently updates the pulsing user-marker overlay, ensuring a buttery smooth tracking experience overlayed precisely onto the parsed route path.
+
+---
+
+## 5. Key Takeaways
+Your project acts as an infrastructural bridge. It combines standard shortest-path networking constructs (Dijkstra’s algorithm within OSRM) with spatial analytical overlays (PostGIS `ST_DWithin`), live OpenStreetMap data (Overpass QL), and hardware-level GPS tracking to mathematically optimize routes for survival and security rather than pure speed.

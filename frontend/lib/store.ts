@@ -19,7 +19,9 @@ export type RouteData = {
 type RouteState = {
   origin: Location | null;
   destination: Location | null;
+  userLocation: { lat: number; lng: number } | null;
   routes: RouteData[];
+  setUserLocation: (loc: { lat: number; lng: number } | null) => void;
   setOrigin: (loc: Location) => void;
   setDestination: (loc: Location) => void;
   setRoutes: (routes: RouteData[]) => void;
@@ -30,7 +32,9 @@ type RouteState = {
 export const useRouteStore = create<RouteState>((set) => ({
   origin: null,
   destination: null,
+  userLocation: null,
   routes: [],
+  setUserLocation: (loc) => set({ userLocation: loc }),
   setOrigin: (loc) => set({ origin: loc }),
   setDestination: (loc) => set({ destination: loc }),
   setRoutes: (routes) => set({ routes }),

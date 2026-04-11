@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouteStore } from '@/lib/store';
 import { fetchRouteData } from '@/lib/routing';
+import { LocateFixed } from 'lucide-react';
 
 const Map = dynamic(() => import('@/components/Map/MapCanvas'), {
   ssr: false,
@@ -27,6 +28,33 @@ export default function MapPage() {
   const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
   const setRoutes = useRouteStore((state) => state.setRoutes);
   const setActiveRouteIndex = useRouteStore((state) => state.setActiveRouteIndex);
+  const userLocation = useRouteStore((state) => state.userLocation);
+
+  const handleUseCurrentLocation = async () => {
+    if (!userLocation) {
+      setErrorMsg('Waiting for precise GPS location from your device...');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${userLocation.lat}&lon=${userLocation.lng}`);
+      if (!res.ok) throw new Error('Reverse geocoding failed');
+      
+      const data = await res.json();
+      if (data && data.display_name) {
+        setStartQuery(data.display_name); // Populates the Start input with real address
+      } else {
+        setStartQuery(`${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`);
+      }
+    } catch (err) {
+      // Fallback
+      setStartQuery(`${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleRouteSearch = async () => {
     if (!startQuery.trim() || !endQuery.trim()) {
@@ -77,8 +105,16 @@ export default function MapPage() {
                 onChange={(e) => setStartQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
                 placeholder="Enter start point..."
-                className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-4 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
+                className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-12 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
               />
+              <button
+                type="button"
+                onClick={handleUseCurrentLocation}
+                title="Use Current Location"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-[#2563eb] hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center bg-white border border-gray-200 shadow-sm"
+              >
+                <LocateFixed className="w-[18px] h-[18px]" />
+              </button>
             </div>
           </div>
           <div>
@@ -163,7 +199,7 @@ export default function MapPage() {
                     )}
                   </div>
                   <span className={`text-sm font-bold ${isActive ? 'text-[#111827]' : 'text-[#6b7280]'}`}>
-                    {minutes} mins
+                    {minutes > 60 ? `${(minutes % 60)} hrs ${(minutes / 60).toFixed(1)} mins` : `${minutes} mins`}
                   </span>
                 </div>
 
