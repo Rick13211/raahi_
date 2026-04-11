@@ -6,31 +6,31 @@ type Location = {
   address: string;
 };
 
-type RouteData = {
-  duration: number;
-  distance: number;
-  coordinates: [number, number][];
+export type RouteData = {
+  duration: number; // in seconds
+  distance: number; // in meters
+  coordinates: [number, number][]; // Array of [lat, lng]
   isFastest: boolean;
 };
 
 type RouteState = {
   origin: Location | null;
   destination: Location | null;
+  routes: RouteData[];
   setOrigin: (loc: Location) => void;
   setDestination: (loc: Location) => void;
-  routes: RouteData[];
   setRoutes: (routes: RouteData[]) => void;
   activeRouteIndex: number;
-  setActiveRouteIndex: (index: number) => void;
+  setActiveRouteIndex: (idx: number) => void;
 };
 
 export const useRouteStore = create<RouteState>((set) => ({
   origin: null,
   destination: null,
+  routes: [],
   setOrigin: (loc) => set({ origin: loc }),
   setDestination: (loc) => set({ destination: loc }),
-  routes: [],
   setRoutes: (routes) => set({ routes }),
   activeRouteIndex: 0,
-  setActiveRouteIndex: (index) => set({ activeRouteIndex: index })
+  setActiveRouteIndex: (idx) => set({ activeRouteIndex: idx })
 }));

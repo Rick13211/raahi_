@@ -46,7 +46,7 @@ function MapBoundsManager() {
 
   useEffect(() => {
     let bounds: L.LatLngBounds | null = null;
-    
+
     if (routes.length > 0 && routes[activeRouteIndex]?.coordinates?.length > 0) {
       bounds = L.latLngBounds(routes[activeRouteIndex].coordinates);
     } else if (origin && destination) {
@@ -64,7 +64,7 @@ function MapBoundsManager() {
       }
     }, 100);
 
-    return () => clearTimeout(timer); // Critical cleanup
+    return () => clearTimeout(timer);
   }, [origin, destination, routes, activeRouteIndex, map]);
 
   return null;
@@ -79,7 +79,7 @@ export default function MapCanvas() {
   return (
     <div className="w-full h-full relative z-0 bg-[#f9fafb]">
       <MapContainer
-        center={[28.6139, 77.2090]} // Default to New Delhi coordinates
+        center={[28.6139, 77.2090]}
         zoom={12}
         scrollWheelZoom={true}
         style={{ height: '100%', width: '100%', zIndex: 0 }}
@@ -119,8 +119,8 @@ export default function MapCanvas() {
 
         {/* Render Generated Routes */}
         {
-          // We sort the routes so the active one renders LAST (on top in SVG)
-          routes.map((route, originalIndex) => ({ route, originalIndex }))
+          routes
+            .map((route, originalIndex) => ({ route, originalIndex }))
             .sort((a, b) => {
               if (a.originalIndex === activeRouteIndex) return 1;
               if (b.originalIndex === activeRouteIndex) return -1;
@@ -129,22 +129,21 @@ export default function MapCanvas() {
             .map(({ route, originalIndex }) => {
               const isActive = originalIndex === activeRouteIndex;
               return (
-                <Polyline 
+                <Polyline
                   key={`route-${originalIndex}`}
                   positions={route.coordinates as [number, number][]}
                   pathOptions={{
-                    color: isActive ? '#2563eb' : '#9ca3af', // Primary blue for active, neutral gray for alt
+                    color: isActive ? '#2563eb' : '#9ca3af',
                     weight: isActive ? 6 : 4,
                     opacity: isActive ? 0.9 : 0.6,
                     lineCap: 'round',
                     lineJoin: 'round',
-                    dashArray: isActive ? undefined : '10, 10' // Dashed for alternatives
+                    dashArray: isActive ? undefined : '10, 10'
                   }}
                 />
               );
             })
         }
-
       </MapContainer>
     </div>
   );
