@@ -83,11 +83,21 @@ export default function MapPage() {
     setIsLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${userLocation.lat}&lon=${userLocation.lng}`);
+      const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
+      const params = new URLSearchParams({
+        access_token: MAPBOX_TOKEN,
+        types: 'address,poi,neighborhood,locality,place',
+        limit: '1',
+      });
+      // Mapbox reverse geocoding URL format: /geocoding/v5/mapbox.places/{longitude},{latitude}.json
+      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${userLocation.lng},${userLocation.lat}.json?${params}`);
+      
       if (!res.ok) throw new Error('Reverse geocoding failed');
       
       const data = await res.json();
-      const address = data?.display_name ?? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`;
+      const feature = data.features?.[0];
+      const address = feature?.place_name ?? `${userLocation.lat.toFixed(5)}, ${userLocation.lng.toFixed(5)}`;
+      
       setStartQuery(address);
       selectedOriginCoords.current = { lat: userLocation.lat, lng: userLocation.lng };
     } catch (err) {

@@ -68,13 +68,9 @@ export default function LocationAutocomplete({
         autocomplete: 'true',
         limit: '6',
         language: 'en',
+        country: 'in', // Bias to India globally to ensure relevant results without skewing to a single city
         types: 'country,region,district,place,locality,neighborhood,address,poi',
       });
-
-      // Bias results near user's location or a default center
-      if (proximity) {
-        params.set('proximity', `${proximity[0]},${proximity[1]}`);
-      }
 
       const res = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params}`
