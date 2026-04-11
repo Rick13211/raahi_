@@ -131,7 +131,6 @@ function sampleCoords(
   for (let i = 0; i < coords.length; i += n) {
     sampled.push(coords[i]);
   }
-  // Always include the last point
   const last = coords[coords.length - 1];
   if (sampled[sampled.length - 1] !== last) {
     sampled.push(last);

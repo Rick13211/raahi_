@@ -1,1 +1,51 @@
-streetLights = https://www.data.gov.in/keywords/Street%20Light
+# Raahi Navigation - Data Fetching Resources & Functions List
+
+This is a comprehensive list of all external APIs, resources, and internal functions you are using to fetch data across the SafeStep AI / Raahi application.
+
+## 1. Geocoding & Routing Data
+Used to convert user text inputs into map coordinates, and calculate the physical paths/lines on the map.
+
+*   **Resource: Nominatim API (OpenStreetMap)**
+    *   **Endpoint:** `https://nominatim.openstreetmap.org/search`
+    *   **Function:** `fetchRouteData()` (in `lib/routing.ts`)
+    *   **Purpose:** Converts human-readable address queries (e.g., "Delhi Station") into raw Lat/Lng coordinates. Open-source, no API key required.
+*   **Resource: Project OSRM API (Open Source Routing Machine)**
+    *   **Endpoint:** `https://router.project-osrm.org/route/v1/driving/`
+    *   **Function:** `getRoutesFromCoordinates()` (in `lib/routing.ts`)
+    *   **Purpose:** Fetches the actual route geometry (polylines), duration, and distance. Returns fastest + alternative routes. Open-source, no API key required.
+
+## 2. Safety Scoring Engine Data
+Used dynamically by your safety algorithm to construct the 0-100 safety score.
+
+*   **Resource: Overpass API (OpenStreetMap)**
+    *   **Endpoint:** `https://overpass-api.de/api/interpreter`
+    *   **Function:** `getLightingFactor()` (in `lib/safetyEngine.ts`)
+    *   **Purpose:** Runs a complex spatial query to count `highway=street_lamp` and `lit=yes` nodes specifically within a bounding box enveloping the user's route. This measures street-lighting coverage. No API key required.
+*   **Resource: OpenWeatherMap API**
+    *   **Endpoint:** `https://api.openweathermap.org/data/2.5/weather`
+    *   **Function:** `getWeatherCondition()` (in `lib/safetyEngine.ts`)
+    *   **Purpose:** Queries real-time weather at the midpoint of the user's route. Triggers score penalties if conditions like heavy rain, hail, or fog are detected. Uses `OPENWEATHER_API_KEY`.
+*   **Resource: Supabase PostGIS Database**
+    *   **Endpoint:** Supabase Edge/REST bindings.
+    *   **Functions:** `countNearbyReports()` and `countNearbySafeZones()` (in `lib/safetyEngine.ts`)
+    *   **Purpose:** Uses raw SQL Remote Procedure Calls (RPCs) to perform rapid `ST_DWithin` spatial calculations. Fetches how many community-reported hazards and verified safe zones exist within physical radii (e.g., 150m) of the route's path.
+
+## 3. Alerts & Communications (SOS)
+Used during an emergency. Currently scaffolded/stubbed until API keys are provided.
+
+*   **Resource: Twilio SDK**
+    *   **Package:** `twilio`
+    *   **Function:** Handled in `app/api/sos/route.ts` 
+    *   **Purpose:** Takes the geographic Map URL of the user and rapidly fires SMS text messages to emergency contacts.
+*   **Resource: SendGrid API**
+    *   **Package:** `@sendgrid/mail`
+    *   **Function:** Handled in `app/api/sos/route.ts`
+    *   **Purpose:** Fallback communication that emails the exact geospatial distress link to contacts.
+
+## 4. Internal API Endpoints 
+The Next.js backend bridges you built to connect the frontend to the data layer.
+
+*   `POST /api/routes/score` - Takes an origin/destination, calls OSRM, runs the data through the `safetyEngine.ts`, and returns a combined enriched GeoJSON object.
+*   `GET /api/reports` - Fetches community hazards dynamically filtering by bounding box.
+*   `GET /api/safe-zones` - Fetches active hospitals/police stations filtering by bounding box.
+*   `GET /api/journeys/share/[token]` - Fetches historical GPS waypoints over the last 24hrs for live-tracking sharing.
