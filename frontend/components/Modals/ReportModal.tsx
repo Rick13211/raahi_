@@ -1,43 +1,36 @@
 'use client';
 
 // ReportModal — submit a community safety report
-// Wires to: POST /api/reports { lat, lng, category, description }
+// Wires to: POST /api/reports { lat, lng, safetyRating, streetLampStatus, crowd, theft, description }
 // Requires: Bearer auth token from Supabase session
-// Categories from types/index.ts: "dark_area" | "harassment" | "broken_light" | "suspicious" | "other"
 
 import { useState, useCallback } from 'react';
 import { useRouteStore } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
-import type { ReportCategory } from '@/types';
 
 interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const CATEGORIES: { value: ReportCategory; label: string; icon: string }[] = [
-  { value: 'dark_area', label: 'Dark Area', icon: '🌑' },
-  { value: 'harassment', label: 'Harassment', icon: '⚠️' },
-  { value: 'broken_light', label: 'Broken Light', icon: '💡' },
-  { value: 'suspicious', label: 'Suspicious Activity', icon: '👁️' },
-  { value: 'other', label: 'Other', icon: '📌' },
-];
-
 export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
   const userLocation = useRouteStore((state) => state.userLocation);
 
-  const [category, setCategory] = useState<ReportCategory | null>(null);
+  const [safetyRating, setSafetyRating] = useState<number>(3);
+  const [streetLampStatus, setStreetLampStatus] = useState<boolean>(true);
+  const [crowd, setCrowd] = useState<number>(3);
+  const [theft, setTheft] = useState<boolean>(false);
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = useCallback(async () => {
-    if (!category) {
-      setErrorMsg('Please select a category.');
-      return;
-    }
     if (!userLocation) {
       setErrorMsg('Location unavailable. Please enable GPS.');
+      return;
+    }
+    if (safetyRating < 1 || safetyRating > 5 || crowd < 1 || crowd > 5) {
+      setErrorMsg('Safety rating and crowd must be between 1 and 5.');
       return;
     }
 
@@ -62,7 +55,10 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
         body: JSON.stringify({
           lat: userLocation.lat,
           lng: userLocation.lng,
-          category,
+          safetyRating,
+          streetLampStatus,
+          crowd,
+          theft,
           description: description.trim() || undefined,
         }),
       });
@@ -76,7 +72,10 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
       setTimeout(() => {
         onClose();
         // Reset form
-        setCategory(null);
+        setSafetyRating(3);
+        setStreetLampStatus(true);
+        setCrowd(3);
+        setTheft(false);
         setDescription('');
         setStatus('idle');
       }, 2000);
@@ -84,12 +83,15 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
       setErrorMsg(err.message || 'Submission failed. Please try again.');
       setStatus('error');
     }
-  }, [category, description, userLocation, onClose]);
+  }, [crowd, description, onClose, safetyRating, streetLampStatus, theft, userLocation]);
 
   const handleClose = () => {
     if (status === 'submitting') return; // don't close while submitting
     onClose();
-    setCategory(null);
+    setSafetyRating(3);
+    setStreetLampStatus(true);
+    setCrowd(3);
+    setTheft(false);
     setDescription('');
     setStatus('idle');
     setErrorMsg('');
@@ -140,27 +142,69 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
           </div>
         ) : (
           <>
-            {/* Category Selection */}
+            {/* Safety details */}
             <div className="px-6 pb-4">
               <label className="text-[11px] font-bold text-[#6b7280] mb-2 block uppercase tracking-wider">
-                Category
+                Safety Rating
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                {CATEGORIES.map((cat) => (
+              <div className="grid grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5].map((value) => (
                   <button
-                    key={cat.value}
-                    onClick={() => setCategory(cat.value)}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left
-                      ${category === cat.value
+                    key={value}
+                    onClick={() => setSafetyRating(value)}
+                    className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all
+                      ${safetyRating === value
                         ? 'border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb] shadow-sm'
                         : 'border-[#e5e7eb] bg-[#f9fafb] text-[#6b7280] hover:border-[#d1d5db]'
                       }`}
                   >
-                    <span className="text-base">{cat.icon}</span>
-                    {cat.label}
+                    {value}
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="px-6 pb-4">
+              <label className="text-[11px] font-bold text-[#6b7280] mb-2 block uppercase tracking-wider">
+                Crowd Level
+              </label>
+              <div className="grid grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setCrowd(value)}
+                    className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-all
+                      ${crowd === value
+                        ? 'border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb] shadow-sm'
+                        : 'border-[#e5e7eb] bg-[#f9fafb] text-[#6b7280] hover:border-[#d1d5db]'
+                      }`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setStreetLampStatus((curr) => !curr)}
+                className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${streetLampStatus
+                  ? 'border-[#16a34a] bg-[#16a34a]/5 text-[#166534]'
+                  : 'border-[#e5e7eb] bg-[#f9fafb] text-[#6b7280]'} `}
+              >
+                Street lights: {streetLampStatus ? 'Working' : 'Not working'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTheft((curr) => !curr)}
+                className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${theft
+                  ? 'border-[#dc2626] bg-[#dc2626]/5 text-[#991b1b]'
+                  : 'border-[#e5e7eb] bg-[#f9fafb] text-[#6b7280]'} `}
+              >
+                Theft observed: {theft ? 'Yes' : 'No'}
+              </button>
             </div>
 
             {/* Description */}
@@ -192,7 +236,7 @@ export default function ReportModal({ isOpen, onClose }: ReportModalProps) {
             <div className="px-6 pb-6">
               <button
                 onClick={handleSubmit}
-                disabled={status === 'submitting' || !category}
+                disabled={status === 'submitting'}
                 className="w-full bg-[#111827] hover:bg-[#1f2937] disabled:bg-[#9ca3af] disabled:cursor-not-allowed text-white font-medium rounded-xl py-3.5 transition-all flex items-center justify-center gap-2 text-sm"
               >
                 {status === 'submitting' ? (

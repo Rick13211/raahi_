@@ -2,22 +2,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { ReportCategory } from "@/types";
 
 // ─── Validation Schemas ──────────────────────────────────────────────────────
-
-const VALID_CATEGORIES: ReportCategory[] = [
-  "dark_area",
-  "harassment",
-  "broken_light",
-  "suspicious",
-  "other",
-];
 
 const CreateReportSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
-  category: z.enum(["dark_area", "harassment", "broken_light", "suspicious", "other"]),
+  safetyRating: z.number().int().min(1).max(5),
+  streetLampStatus: z.boolean(),
+  crowd: z.number().int().min(1).max(5),
+  theft: z.boolean(),
   description: z.string().max(2000).optional(),
 });
 
@@ -66,19 +60,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { lat, lng, category, description } = parsed.data;
+    const { lat, lng, safetyRating, streetLampStatus, crowd, theft, description } = parsed.data;
 
-    // Insert with PostGIS point — POINT(lng lat)
+    // Insert with PostGIS geography point in EWKT format.
     const { data, error } = await supabaseAdmin
-      .from("safety_reports")
+      .from("user_reports")
       .insert({
         user_id: user.id,
-        point: `POINT(${lng} ${lat})`,
-        category,
+        position: `SRID=4326;POINT(${lng} ${lat})`,
+        safety_rating: safetyRating,
+        street_lamp_status: streetLampStatus,
+        crowd,
+        theft,
         description: description ?? null,
-        status: "pending",
       })
-      .select("id, category, status, created_at")
+      .select("id, created_at")
       .single();
 
     if (error) {
@@ -100,7 +96,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── GET /api/reports ────────────────────────────────────────────────────────
-// Public. Returns approved reports near a given point.
+// Public. Returns reports near a given point.
 // Query params: lat, lng, radius (default 1000m)
 
 export async function GET(request: NextRequest) {
@@ -123,34 +119,15 @@ export async function GET(request: NextRequest) {
     const { lat, lng, radius } = parsed.data;
 
     // Use PostGIS ST_DWithin for spatial query
-    const { data, error } = await supabaseAdmin.rpc("get_nearby_reports", {
+    const { data, error } = await supabaseAdmin.rpc("get_nearby_user_reports", {
       p_lng: lng,
       p_lat: lat,
       p_radius: radius,
     });
 
     if (error) {
-      // Fallback: raw SQL via Supabase's postgrest isn't ideal for spatial,
-      // so we attempt a direct query
-      console.error("[GET /api/reports] RPC error, attempting fallback:", error);
-
-      // Fallback: bounding box (±0.05° ≈ ~5 km) to avoid full-table scan
-      const degOffset = 0.05;
-      const { data: fallbackData, error: fallbackError } = await supabaseAdmin
-        .from("safety_reports")
-        .select("id, category, description, status, created_at, lat, lng")
-        .eq("status", "approved")
-        .gte("lat", lat - degOffset).lte("lat", lat + degOffset)
-        .gte("lng", lng - degOffset).lte("lng", lng + degOffset);
-
-      if (fallbackError) {
-        return NextResponse.json(
-          { error: "Failed to fetch reports" },
-          { status: 500 }
-        );
-      }
-
-      return NextResponse.json(fallbackData ?? []);
+      console.error("[GET /api/reports] RPC error:", error);
+      return NextResponse.json([]);
     }
 
     return NextResponse.json(data ?? []);
