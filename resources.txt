@@ -1,0 +1,1 @@
+streetLights = https://www.data.gov.in/keywords/Street%20Light
