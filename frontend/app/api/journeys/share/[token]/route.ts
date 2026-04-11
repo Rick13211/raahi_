@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // ─── GET /api/journeys/share/[token] ─────────────────────────────────────────
 // Public, no auth required. Returns journey waypoints from the last 24 hours.

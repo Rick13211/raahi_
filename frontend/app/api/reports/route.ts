@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { ReportCategory } from "@/types";
 
 // ─── Validation Schemas ──────────────────────────────────────────────────────
@@ -26,6 +26,36 @@ const GetReportsQuerySchema = z.object({
   radius: z.coerce.number().min(1).max(50000).default(1000),
 });
 
+// ─── WKB hex point parser ────────────────────────────────────────────────────
+
+function parseWKBPoint(hex: string): { lat: number; lng: number } | null {
+  try {
+    if (hex.length < 42) return null;
+    let offset = 2;
+    const typeHex = hex.substring(offset, offset + 8);
+    offset += 8;
+    const hasSRID = typeHex === '01000020' || typeHex === '20000001';
+    if (hasSRID) offset += 8;
+    const xHex = hex.substring(offset, offset + 16);
+    offset += 16;
+    const yHex = hex.substring(offset, offset + 16);
+    const lng = readFloat64LE(xHex);
+    const lat = readFloat64LE(yHex);
+    if (isNaN(lng) || isNaN(lat)) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+
+function readFloat64LE(hex: string): number {
+  const bytes = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) {
+    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return new DataView(bytes.buffer).getFloat64(0, true);
+}
+
 // ─── Helper: extract Supabase auth user ──────────────────────────────────────
 
 async function getAuthUser(request: NextRequest) {
@@ -43,11 +73,9 @@ async function getAuthUser(request: NextRequest) {
 }
 
 // ─── POST /api/reports ───────────────────────────────────────────────────────
-// Auth required. Creates a new safety report with status "pending".
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth check
     const user = await getAuthUser(request);
     if (!user) {
       return NextResponse.json(
@@ -67,7 +95,6 @@ export async function POST(request: NextRequest) {
 
     const { lat, lng, category, description } = parsed.data;
 
-    // Insert with PostGIS point — POINT(lng lat)
     const { data, error } = await supabaseAdmin
       .from("safety_reports")
       .insert({
@@ -99,8 +126,6 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── GET /api/reports ────────────────────────────────────────────────────────
-// Public. Returns approved reports near a given point.
-// Query params: lat, lng, radius (default 1000m)
 
 export async function GET(request: NextRequest) {
   try {
@@ -121,7 +146,6 @@ export async function GET(request: NextRequest) {
 
     const { lat, lng, radius } = parsed.data;
 
-    // Use PostGIS ST_DWithin for spatial query
     const { data, error } = await supabaseAdmin.rpc("get_nearby_reports", {
       p_lng: lng,
       p_lat: lat,
@@ -129,8 +153,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (error) {
-      // Fallback: raw SQL via Supabase's postgrest isn't ideal for spatial,
-      // so we attempt a direct query
       console.error("[GET /api/reports] RPC error, attempting fallback:", error);
 
       // Fallback: bounding box (±0.05° ≈ ~5 km) to avoid full-table scan
@@ -149,10 +171,41 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      return NextResponse.json(fallbackData ?? []);
+      // Parse WKB points into lat/lng
+      const result = (fallbackData ?? []).map((r: Record<string, unknown>) => {
+        const coords = typeof r.point === 'string' ? parseWKBPoint(r.point) : null;
+        return {
+          id: r.id,
+          category: r.category,
+          description: r.description,
+          status: r.status,
+          created_at: r.created_at,
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
+        };
+      }).filter((r: { lat: number | null }) => r.lat !== null);
+
+      return NextResponse.json(result);
     }
 
-    return NextResponse.json(data ?? []);
+    // Parse the response — handle both RPC with lat/lng and RPC with point column
+    const result = (data ?? []).map((r: Record<string, unknown>) => {
+      if (typeof r.lat === 'number' && typeof r.lng === 'number') {
+        return r;
+      }
+      const coords = typeof r.point === 'string' ? parseWKBPoint(r.point) : null;
+      return {
+        id: r.id,
+        category: r.category,
+        description: r.description,
+        status: r.status,
+        created_at: r.created_at,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+      };
+    }).filter((r: { lat: number | null }) => r.lat !== null);
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error("[GET /api/reports]", error);
     return NextResponse.json(
