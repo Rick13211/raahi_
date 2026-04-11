@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SafeStep AI | Safety-Aware Navigation",
+  title: "Raahi | Safety-Aware Navigation",
   description: "Advanced routing emphasizing user safety, avoiding dark areas, and promoting safer paths.",
 };
 

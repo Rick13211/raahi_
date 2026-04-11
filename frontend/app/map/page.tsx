@@ -21,6 +21,10 @@ export default function MapPage() {
   
   const setOrigin = useRouteStore((state) => state.setOrigin);
   const setDestination = useRouteStore((state) => state.setDestination);
+  const routes = useRouteStore((state) => state.routes);
+  const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
+  const setActiveRouteIndex = useRouteStore((state) => state.setActiveRouteIndex);
+  const setRoutes = useRouteStore((state) => state.setRoutes);
 
   const handleRouteSearch = async () => {
     if (!startQuery.trim() || !endQuery.trim()) {
@@ -59,6 +63,22 @@ export default function MapPage() {
         address: endData[0].display_name
       });
       
+      // 3. Fetch Route from OSRM
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startData[0].lon},${startData[0].lat};${endData[0].lon},${endData[0].lat}?alternatives=true&geometries=geojson&overview=full`;
+      const osrmRes = await fetch(osrmUrl);
+      const osrmData = await osrmRes.json();
+      
+      if (osrmData && osrmData.routes) {
+        const parsedRoutes = osrmData.routes.map((r: any, idx: number) => ({
+          duration: Math.round(r.duration),
+          distance: Math.round(r.distance),
+          coordinates: r.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]),
+          isFastest: idx === 0
+        }));
+        setRoutes(parsedRoutes);
+        setActiveRouteIndex(0);
+      }
+      
     } catch (err: any) {
       setErrorMsg(err.message || 'Geocoding failed. Try being more specific.');
     } finally {
@@ -67,55 +87,53 @@ export default function MapPage() {
   };
 
   return (
-    <main className="flex h-[100dvh] w-screen overflow-hidden bg-black text-white font-sans flex-col md:flex-row">
+    <main className="flex h-[100dvh] w-screen overflow-hidden bg-[#ffffff] text-[#111827] font-sans flex-col md:flex-row">
       {/* Sidebar Panel */}
-      <div className="w-full md:w-96 lg:w-[420px] h-[55vh] md:h-full bg-zinc-950 border-t md:border-t-0 md:border-r border-white/10 flex flex-col shadow-2xl z-10 p-6 md:p-8 order-2 md:order-1 shrink-0">
+      <div className="w-full md:w-96 lg:w-[420px] h-[55vh] md:h-full bg-white border-t md:border-t-0 md:border-r border-[#e5e7eb] flex flex-col shadow-sm z-10 p-6 md:p-8 order-2 md:order-1 shrink-0 lg:rounded-r-2xl">
         <Link href="/" className="hidden md:flex items-center gap-3 mb-8 hover:opacity-80 transition-opacity">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-400 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <svg className="w-5 h-5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 2L3 9h3v10h12V9h3L12 2z" />
-            </svg>
-          </div>
-          <span className="text-xl font-bold tracking-tight">SafeStep</span>
+          <span className="text-2xl font-extrabold tracking-tight text-[#111827]">Raahi</span>
         </Link>
         
         {/* Mobile Grab Handle */}
-        <div className="w-12 h-1.5 bg-zinc-800 rounded-full mx-auto mb-6 md:hidden" />
+        <div className="w-12 h-1.5 bg-[#e5e7eb] rounded-full mx-auto mb-6 md:hidden" />
 
         {/* Search Bar Section */}
         <div className="space-y-4 mb-4">
           <div>
-            <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block uppercase tracking-wider">Start Location</label>
+            <label className="text-[11px] font-bold text-[#6b7280] mb-1.5 block uppercase tracking-wider">Start Location</label>
             <div className="relative">
-               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-500 border border-emerald-900" />
+               <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[#2563eb] ring-2 ring-[#2563eb]/20" />
                <input 
                  type="text" 
                  value={startQuery}
                  onChange={(e) => setStartQuery(e.target.value)}
                  onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
                  placeholder="Enter start point..." 
-                 className="w-full bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder:text-zinc-600"
+                 className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-4 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
                />
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-bold text-zinc-500 mb-1.5 block uppercase tracking-wider">Destination</label>
+            <label className="text-[11px] font-bold text-[#6b7280] mb-1.5 block uppercase tracking-wider">Destination</label>
             <div className="relative">
-               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-sm bg-cyan-500 border border-cyan-900" />
+               <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-sm bg-[#111827] ring-2 ring-[#e5e7eb]" />
                <input 
                  type="text" 
                  value={endQuery}
                  onChange={(e) => setEndQuery(e.target.value)}
                  onKeyDown={(e) => e.key === 'Enter' && handleRouteSearch()}
                  placeholder="Where to?" 
-                 className="w-full bg-zinc-900 border border-white/5 rounded-xl pl-9 pr-4 py-3.5 text-sm focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder:text-zinc-600"
+                 className="w-full bg-[#f9fafb] border border-[#e5e7eb] rounded-xl pl-9 pr-4 py-3.5 text-sm font-medium text-[#111827] focus:outline-none focus:bg-white focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 transition-all placeholder:text-[#6b7280] placeholder:font-normal"
                />
             </div>
           </div>
         </div>
 
         {errorMsg && (
-          <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
+          <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl p-3.5 mb-4 font-medium flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
             {errorMsg}
           </div>
         )}
@@ -123,7 +141,7 @@ export default function MapPage() {
         <button 
           onClick={handleRouteSearch}
           disabled={isLoading}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-emerald-500/50 disabled:cursor-not-allowed text-black font-semibold tracking-wide rounded-xl py-4 transition-all shadow-lg shadow-emerald-500/20 mb-8 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+          className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] disabled:bg-[#93c5fd] disabled:cursor-not-allowed text-white font-medium tracking-normal rounded-xl py-4 transition-all shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] mb-8 flex items-center justify-center gap-2 hover:shadow-[0_6px_20px_rgba(37,99,235,0.23)] active:translate-y-0 text-base"
         >
           {isLoading ? 'Geocoding...' : 'Find Safest Route'}
           {!isLoading && (
@@ -134,60 +152,63 @@ export default function MapPage() {
         </button>
 
         {/* Route Details Results Container */}
-        <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Suggested Routes</span>
+        <div className="flex-1 overflow-y-auto pr-2 space-y-4 -mr-2 scrollbar-thin scrollbar-thumb-[#e5e7eb]">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#e5e7eb]" />
+            <span className="text-[11px] font-bold text-[#6b7280] uppercase tracking-wider">Suggested Routes</span>
           </div>
 
-          <div className="p-4 bg-zinc-900/40 rounded-2xl border border-emerald-500/30 hover:bg-zinc-800/60 transition-all cursor-pointer group relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-8 -mt-8 group-hover:bg-emerald-500/20 transition-colors" />
-            <div className="flex justify-between items-start mb-3 relative z-10">
-              <div className="flex items-center gap-2">
-                <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400">
-                  Safest Choice
+          {routes.map((route, idx) => {
+            const isActive = activeRouteIndex === idx;
+            const minutes = Math.round(route.duration / 60);
+            const km = (route.distance / 1000).toFixed(1);
+            
+            return (
+              <div 
+                key={idx}
+                onClick={() => setActiveRouteIndex(idx)}
+                className={`p-5 bg-white rounded-2xl border transition-all cursor-pointer relative overflow-hidden ${
+                  isActive 
+                  ? 'border-[#2563eb] shadow-md border-2' 
+                  : 'border-[#e5e7eb] shadow-sm hover:border-[#d1d5db]'
+                }`}
+              >
+                <div className="flex justify-between items-start mb-3 relative z-10">
+                  <div className="flex items-center gap-2">
+                    {route.isFastest ? (
+                      <div className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#059669]/10 text-[#059669] border border-[#059669]/20">
+                        Fastest Choice
+                      </div>
+                    ) : (
+                      <span className="text-sm font-bold text-[#6b7280]">Alternative Route</span>
+                    )}
+                  </div>
+                  <span className={`text-sm font-bold ${isActive ? 'text-[#111827]' : 'text-[#6b7280]'}`}>
+                    {minutes} mins
+                  </span>
+                </div>
+                
+                <div className="flex items-baseline gap-2 mb-2.5 relative z-10">
+                   <span className={`text-3xl font-black tracking-tight ${isActive ? 'text-[#111827]' : 'text-[#6b7280]'}`}>
+                     {km}
+                   </span>
+                   <span className={`text-xs font-semibold ${isActive ? 'text-[#2563eb]' : 'text-[#6b7280]'}`}>
+                     km Distance
+                   </span>
                 </div>
               </div>
-              <span className="text-sm font-semibold">18 mins</span>
-            </div>
-            
-            <div className="flex items-baseline gap-2 mb-2 relative z-10">
-               <span className="text-2xl font-bold text-white tracking-tight">92</span>
-               <span className="text-xs font-medium text-emerald-400">/100 Safety Score</span>
-            </div>
-            
-            <p className="text-xs text-zinc-400 relative z-10 leading-relaxed">
-               Well-lit main streets. Passes by 2 police stations and 1 hospital. No recent hazards.
-            </p>
-          </div>
-          
-          <div className="p-4 bg-zinc-900/20 rounded-2xl border border-white/5 hover:border-amber-500/20 hover:bg-zinc-800/40 transition-all cursor-pointer group">
-            <div className="flex justify-between items-start mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-zinc-300">Fastest Route</span>
-              </div>
-              <span className="text-sm font-semibold text-amber-400">14 mins</span>
-            </div>
-            
-            <div className="flex items-baseline gap-2 mb-2">
-               <span className="text-2xl font-bold text-zinc-300 tracking-tight">64</span>
-               <span className="text-xs font-medium text-amber-400">/100 Safety Score</span>
-            </div>
-            
-            <p className="text-xs text-zinc-500 leading-relaxed">
-               Faster path, but includes poorly lit park area. 1 unverified community report ahead.
-            </p>
-          </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Map Area */}
-      <div className="flex-1 w-full h-[45vh] md:h-full relative order-1 md:order-2">
+      <div className="flex-1 w-full h-[45vh] md:h-full relative order-1 md:order-2 bg-[#f9fafb]">
         <Map />
         
-        {/* Floating SOS Button */}
-        <button className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-[1000] w-16 h-16 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center text-white shadow-xl shadow-red-500/30 transition-all hover:scale-105 active:scale-95 border-2 border-red-400/50 focus:outline-none focus:ring-4 focus:ring-red-500/50">
-          <span className="font-bold text-base tracking-widest">SOS</span>
+        {/* Floating SOS Button relocated to top right to clear Zoom controls */}
+        <button className="absolute top-6 right-6 md:top-8 md:right-8 z-[1000] w-12 h-12 md:w-14 md:h-14 rounded-[14px] bg-white hover:bg-[#f9fafb] border border-[#e5e7eb] flex items-center justify-center text-red-600 shadow-sm transition-all hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-500/20 group">
+          <span className="font-extrabold text-sm md:text-base tracking-widest relative z-10">SOS</span>
         </button>
       </div>
     </main>
