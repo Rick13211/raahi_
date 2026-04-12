@@ -27,7 +27,7 @@
 
 ---
 
-## 🤔 What is Raahi?
+## What is Raahi?
 
 Most navigation apps tell you how to get somewhere. Raahi tells you **how safe it is to get there.**
 
@@ -39,7 +39,7 @@ Think of it as Google Maps + a local safety awareness layer, powered by communit
 
 ---
 
-## ✨ What Can You Do With Raahi?
+## What Can You Do With Raahi?
 
 **🗺️ Plan a Safe Route** — Enter a start and destination anywhere in India. Raahi fetches up to 3 driving alternatives and scores each one in parallel. Results show a safety score (color-coded green / amber / red), estimated time and distance, reason tags explaining deductions (*"Poorly Lit"*, *"Late Night"*, *"High Reports"*), and Safest vs Fastest badges so you can compare at a glance.
 
@@ -55,7 +55,7 @@ Think of it as Google Maps + a local safety awareness layer, powered by communit
 
 ---
 
-## 🧠 How We Calculate the Safety Score
+## How We Calculate the Safety Score
 
 This is the core of Raahi. Every route receives a score between **0 and 100**, computed by `safetyEngine.ts` (636 lines). The engine runs **7 independent factors** — most in parallel — then combines them into a single weighted score.
 
@@ -76,7 +76,7 @@ Each factor produces a value from 0–100. The weighted sum is clamped to [0, 10
 
 ---
 
-### Factor 1 — 💡 Street Lighting `35% weight`
+### Factor 1 — Street Lighting `35% weight`
 
 Street lighting is the single strongest predictor of perceived and actual safety on a route, so it carries the highest weight.
 
@@ -95,7 +95,7 @@ Street lighting is the single strongest predictor of perceived and actual safety
 
 ---
 
-### Factor 2 — 🔪 Historical Crime `20% weight`
+### Factor 2 — Historical Crime `20% weight`
 
 Uses district-level NCRB (National Crime Records Bureau) data stored in a Supabase table.
 
@@ -108,7 +108,7 @@ Uses district-level NCRB (National Crime Records Bureau) data stored in a Supaba
 
 ---
 
-### Factor 3 — ⚠️ Community Reports `15% weight`
+### Factor 3 — Community Reports `15% weight`
 
 Real-time user-submitted reports from within **150 metres** of the route.
 
@@ -122,7 +122,7 @@ Real-time user-submitted reports from within **150 metres** of the route.
 
 ---
 
-### Factor 4 — 🚗 Government Accident Data `10% weight`
+### Factor 4 — Government Accident Data `10% weight`
 
 Uses the **NCRB 2022 traffic accident dataset** from `data.gov.in`, proxied server-side through `/api/accident` to avoid CORS issues.
 
@@ -138,7 +138,7 @@ Results are cached at ~11 km grid resolution with a 10-minute TTL.
 
 ---
 
-### Factor 5 — 🏙️ Popular Places Score `10% weight`
+### Factor 5 — Popular Places Score `10% weight`
 
 A novel **geometry-only** algorithm — no external API call required. It estimates how urban and foot-trafficked a route is purely from its coordinate geometry.
 
@@ -154,7 +154,7 @@ A base score of +20 is added, clamped to [0, 100]. Urban routes score higher —
 
 ---
 
-### Factor 6 — ⏰ Time of Day `5% weight`
+### Factor 6 — Time of Day `5% weight`
 
 Simple but impactful for anyone navigating at night.
 
@@ -165,7 +165,7 @@ Simple but impactful for anyone navigating at night.
 
 ---
 
-### Factor 7 — 🌧️ Weather `5% weight`
+### Factor 7 — Weather `5% weight`
 
 Live conditions at the route midpoint from the **OpenWeather API**.
 
@@ -187,7 +187,7 @@ Live conditions at the route midpoint from the **OpenWeather API**.
 
 ---
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -236,7 +236,7 @@ frontend/
 │   ├── UI/                       # SOSButton, SafetyScoreBadge, ProfileMenu …
 │   └── Home/                     # Navbar, Hero, FeatureCards
 ├── lib/
-│   ├── safetyEngine.ts           # 🧠 The scoring engine (636 lines)
+│   ├── safetyEngine.ts           # The scoring engine (636 lines)
 │   ├── routing.ts                # OSRM helpers
 │   ├── store.ts                  # Zustand state
 │   └── supabase.ts               # Two Supabase clients
@@ -246,7 +246,7 @@ frontend/
 
 ---
 
-## 🚀 Run Locally
+## Run Locally
 
 ### Prerequisites
 
@@ -385,7 +385,7 @@ Open [http://localhost:3000](http://localhost:3000) — Raahi is running locally
 
 ---
 
-## ☁️ Live on Vercel
+## Live on Vercel
 
 The deployed version is live at **[https://raahi-hazel.vercel.app](https://raahi-hazel.vercel.app/)** — open it in your browser to use it right now, no setup needed.
 
@@ -401,7 +401,7 @@ Then open your Vercel project → **Settings → Environment Variables** → add
 
 ---
 
-## 🗺️ Pages
+## Pages
 
 | URL | Description |
 |---|---|
@@ -415,7 +415,7 @@ Then open your Vercel project → **Settings → Environment Variables** → add
 
 ---
 
-## 📊 By the Numbers
+## By the Numbers
 
 | | |
 |---|---|
@@ -436,8 +436,8 @@ MIT — do whatever you want, just keep it safe out there.
 
 <div align="center">
 
-Built to make every street safer, one route at a time. 🇮🇳
+Built to make every street safer, one route at a time. 
 
-**[🌐 Open the live app →](https://raahi-hazel.vercel.app/)**
+**[ Open the live app →](https://raahi-hazel.vercel.app/)**
 
 </div>
