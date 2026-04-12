@@ -33,7 +33,7 @@ Most navigation apps tell you how to get somewhere. Raahi tells you **how safe i
 
 Built specifically for Indian cities, Raahi fetches up to 3 alternate routes for your journey and runs each one through a 7-factor safety scoring engine. You see a **safety score (0–100)** alongside every route — so you can choose between arriving 3 minutes faster or arriving through a well-lit, lower-risk path.
 
-Think of it as Google Maps + a local safety awareness layer, powered by community reports, government crime data, OpenStreetMap street lamps, live weather, and more.
+Think of it as Google Maps + a local safety awareness layer, powered by community reports, government crime data, OpenStreetMap street lamps,  weather, and more.
 
 **→ Try it now: [raahi-hazel.vercel.app](https://raahi-hazel.vercel.app/)**
 
