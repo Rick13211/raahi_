@@ -12,7 +12,7 @@ interface ScoreResult {
 }
 
 const WEIGHTS = {
-  safeZones: 0.10,
+  popularPlaces: 0.10,
   reportDensity: 0.15,
   historicalCrime: 0.20,
   timeOfDay: 0.05,
@@ -24,7 +24,6 @@ const WEIGHTS = {
 const NIGHT_PENALTY = 30;
 const WEATHER_PENALTY = 20;
 const REPORT_RADIUS_M = 150;
-const SAFE_ZONE_RADIUS_M = 300;
 const LAMPS_PER_KM_FULL = 20;
 
 const lightingCache = new Map<string, { factor: number; ts: number }>();
@@ -184,19 +183,7 @@ async function countNearbyReports(lng: number, lat: number, radiusM: number) {
   }
 }
 
-async function countNearbySafeZones(lng: number, lat: number, radiusM: number) {
-  if (!hasSupabaseKeys) return 0;
-  try {
-    const { data } = await supabaseAdmin.rpc("count_safe_zones_nearby", {
-      lng,
-      lat,
-      radius_m: radiusM,
-    });
-    return typeof data === "number" ? data : 0;
-  } catch {
-    return 0;
-  }
-}
+
 
 async function getWeatherCondition(lng: number, lat: number) {
   const apiKey = process.env.OPENWEATHER_API_KEY;
@@ -472,6 +459,103 @@ async function getHistoricalCrimeFactor(district: string | null) {
   }
 }
 
+// ── Popular Places Score (geometry-only footfall proxy) ─────────────────────
+
+function haversineMeters(
+  lat1: number, lng1: number, lat2: number, lng2: number
+): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function bearingDeg(
+  lat1: number, lng1: number, lat2: number, lng2: number
+): number {
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const r1 = (lat1 * Math.PI) / 180;
+  const r2 = (lat2 * Math.PI) / 180;
+  const y = Math.sin(dLng) * Math.cos(r2);
+  const x =
+    Math.cos(r1) * Math.sin(r2) - Math.sin(r1) * Math.cos(r2) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function getPopularPlacesScore(coords: [number, number][]): number {
+  if (coords.length < 6) return 50; // not enough data
+
+  // Build segments: array of distances (meters) between consecutive points
+  const segments: number[] = [];
+  for (let i = 1; i < coords.length; i++) {
+    const [lat1, lng1] = coords[i - 1];
+    const [lat2, lng2] = coords[i];
+    segments.push(haversineMeters(lat1, lng1, lat2, lng2));
+  }
+
+  const totalLength = segments.reduce((a, b) => a + b, 0);
+  if (totalLength < 10) return 50; // degenerate route
+
+  // Build bearing changes between consecutive segments
+  const bearingChanges: number[] = [];
+  for (let i = 1; i < coords.length - 1; i++) {
+    const b1 = bearingDeg(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+    const b2 = bearingDeg(coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1]);
+    let diff = Math.abs(b2 - b1);
+    if (diff > 180) diff = 360 - diff;
+    bearingChanges.push(diff);
+  }
+
+  // 1. CLUSTER DENSITY: sliding window of 5 consecutive segments
+  const WINDOW = 5;
+  let denseWindows = 0;
+  const totalWindows = Math.max(1, segments.length - WINDOW + 1);
+  for (let i = 0; i <= segments.length - WINDOW; i++) {
+    let windowSum = 0;
+    for (let j = i; j < i + WINDOW; j++) {
+      windowSum += segments[j];
+    }
+    if (windowSum < 80) denseWindows++; // 5 segments < 80m total = dense cluster
+  }
+  const clusterRatio = denseWindows / totalWindows;
+
+  // 2. MICRO-TURN DENSITY: bearing changes between 5° and 15°
+  let microTurnCount = 0;
+  for (const change of bearingChanges) {
+    if (change >= 5 && change <= 15) microTurnCount++;
+  }
+  const microTurnDensity = microTurnCount / (totalLength / 1000); // per km
+
+  // 3. POINT DENSITY: coords per km
+  const pointDensity = coords.length / (totalLength / 1000);
+
+  // 4. SCORE FORMULA
+  const popularPlacesScore = Math.min(
+    100,
+    Math.max(
+      0,
+      Math.round(
+        clusterRatio * 40 +
+        microTurnDensity * 5 +
+        pointDensity * 1.5 +
+        20 // base score
+      )
+    )
+  );
+
+  console.log(
+    "[popularPlaces]",
+    { clusterRatio: +clusterRatio.toFixed(3), microTurnDensity: +microTurnDensity.toFixed(2), pointDensity: +pointDensity.toFixed(2), popularPlacesScore }
+  );
+
+  return popularPlacesScore;
+}
+
 export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   const { coords, time } = input;
   const reasonTags: string[] = [];
@@ -479,25 +563,16 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   const sampled = sampleCoords(coords, 30);
 
   let totalReports = 0;
-  let totalSafeZones = 0;
 
   const results = await Promise.all(
     sampled.map(async ([lat, lng]) => {
-      const [r, z] = await Promise.all([
-        countNearbyReports(lng, lat, REPORT_RADIUS_M),
-        countNearbySafeZones(lng, lat, SAFE_ZONE_RADIUS_M),
-      ]);
-      return { r, z };
+      return countNearbyReports(lng, lat, REPORT_RADIUS_M);
     })
   );
 
-  for (const x of results) {
-    totalReports += x.r;
-    totalSafeZones += x.z;
+  for (const r of results) {
+    totalReports += r;
   }
-
-  const safeZoneFactor = Math.min(100, totalSafeZones * 15);
-  if (safeZoneFactor < 40) reasonTags.push("few_safe_zones_nearby");
 
   const reportFactor = Math.max(0, 100 - totalReports * 10);
   if (reportFactor < 60) reasonTags.push("high_report_density");
@@ -533,12 +608,14 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
 
   if (govAccident.isHighRisk) reasonTags.push("high_traffic_accident_zone");
 
+  const popularPlacesFactor = getPopularPlacesScore(coords);
+
   const score = Math.round(
     Math.max(
       0,
       Math.min(
         100,
-        safeZoneFactor * WEIGHTS.safeZones +
+        popularPlacesFactor * WEIGHTS.popularPlaces +
           reportFactor * WEIGHTS.reportDensity +
           crimeFactor * WEIGHTS.historicalCrime +
           timeFactor * WEIGHTS.timeOfDay +
@@ -548,6 +625,12 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
       )
     )
   );
+
+  console.log("[scoreRoute]", {
+    popularPlacesFactor, reportFactor, crimeFactor, timeFactor,
+    weatherFactor, lightingFactor, govAccidentFactor: govAccident.factor,
+    score,
+  });
 
   return { score, reasonTags };
 }
