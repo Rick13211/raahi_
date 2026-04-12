@@ -11,8 +11,10 @@ import LocationAutocomplete from '@/components/UI/LocationAutocomplete';
 import type { SuggestionResult } from '@/components/UI/LocationAutocomplete';
 import RoutePanel from '@/components/Routing/RoutePanel';
 import SOSButton from '@/components/UI/SOSButton';
+import ProfileMenu from '@/components/UI/ProfileMenu';
 import ReportModal from '@/components/Modals/ReportModal';
 import LoginRequiredModal from '@/components/Modals/LoginRequiredModal';
+import AnalyticsButton from '@/components/UI/AnalyticsButton';
 
 const Map = dynamic(() => import('@/components/Map/MapCanvas'), {
   ssr: false,
@@ -183,10 +185,13 @@ export default function MapPage() {
     <main className="flex h-[100dvh] w-screen overflow-hidden bg-[#ffffff] text-[#111827] font-sans flex-col md:flex-row">
       {/* Sidebar Panel */}
       <div className="w-full md:w-96 lg:w-[420px] h-[55vh] md:h-full bg-white border-t md:border-t-0 md:border-r border-[#e5e7eb] flex flex-col shadow-sm z-10 p-6 md:p-8 order-2 md:order-1 shrink-0 lg:rounded-r-2xl">
-        {/* Logo */}
-        <Link href="/" className="hidden md:flex items-center gap-3 mb-8 hover:opacity-80 transition-opacity">
-          <span className="text-2xl font-extrabold tracking-tight text-[#111827]">Raahi</span>
-        </Link>
+        {/* Logo + Profile */}
+        <div className="hidden md:flex items-center justify-between mb-8">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <span className="text-2xl font-extrabold tracking-tight text-[#111827]">Raahi</span>
+          </Link>
+          <ProfileMenu />
+        </div>
 
         {/* Mobile Grab Handle */}
         <div className="w-12 h-1.5 bg-[#e5e7eb] rounded-full mx-auto mb-6 md:hidden" />
@@ -285,8 +290,14 @@ export default function MapPage() {
       <div className="flex-1 w-full h-[45vh] md:h-full relative order-1 md:order-2 bg-[#f9fafb]">
         <Map />
 
-        {/* Floating SOS Button */}
-        <div className="absolute top-6 right-6 md:top-8 md:right-8 z-[1000]">
+        {/* Floating Profile (mobile only) */}
+        <div className="absolute top-6 left-6 md:hidden z-[1000]">
+          <ProfileMenu />
+        </div>
+
+        {/* Floating Action Buttons — Analytics + SOS */}
+        <div className="absolute top-6 right-6 md:top-8 md:right-8 z-[1000] flex items-center gap-3">
+          <AnalyticsButton className="w-12 h-12 md:w-14 md:h-14" />
           <SOSButton className="w-12 h-12 md:w-14 md:h-14" />
         </div>
       </div>
