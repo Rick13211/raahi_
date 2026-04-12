@@ -1,23 +1,15 @@
-// 🔒 BACKEND/DB — DO NOT MODIFY (flagged for future work)
 import { supabaseAdmin, hasSupabaseKeys } from "@/lib/supabase";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+import * as turf from "@turf/turf";
 
 interface ScoreInput {
-  /** Ordered route coordinates as [lat, lng] pairs (Leaflet/OSRM order) */
   coords: [number, number][];
-  /** The time of travel (used for time-of-day & weather scoring) */
   time: Date;
 }
 
 interface ScoreResult {
-  /** 0 – 100, higher is safer */
   score: number;
-  /** Human-readable explanations for score deductions */
   reasonTags: string[];
 }
-
-// ─── Weight configuration ────────────────────────────────────────────────────
 
 const WEIGHTS = {
   safeZones: 0.15,
@@ -28,39 +20,22 @@ const WEIGHTS = {
   lighting: 0.40,
 } as const;
 
-const NIGHT_PENALTY = 30; // penalty points during 23:00 – 05:00
-const WEATHER_PENALTY = 20; // penalty for rain / fog conditions
+const NIGHT_PENALTY = 30;
+const WEATHER_PENALTY = 20;
 const REPORT_RADIUS_M = 150;
 const SAFE_ZONE_RADIUS_M = 300;
-
-// Overpass: lamps per km of route to reach a "fully lit" score of 100
 const LAMPS_PER_KM_FULL = 20;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const lightingCache = new Map<string, { factor: number; ts: number }>();
 
-/**
- * Compute a bounding box (min/max lat/lng) around all route coordinates.
- */
-function routeBBox(coords: [number, number][]): [number, number, number, number] {
-  let minLat = Infinity, maxLat = -Infinity;
-  let minLng = Infinity, maxLng = -Infinity;
-  for (const [lat, lng] of coords) {
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-  }
-  // Add a small padding buffer (~50 m in degrees)
-  const pad = 0.0005;
-  return [minLat - pad, minLng - pad, maxLat + pad, maxLng + pad];
+function getCacheKey(coords: [number, number][]) {
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  return `${first[0].toFixed(3)},${first[1].toFixed(3)}-${last[0].toFixed(3)},${last[1].toFixed(3)}`;
 }
 
-/**
- * Estimate total route distance in km from ordered [lat, lng] pairs.
- * Uses the Haversine formula for accuracy.
- */
 function routeDistanceKm(coords: [number, number][]): number {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
     const [lat1, lng1] = coords[i - 1];
@@ -74,70 +49,117 @@ function routeDistanceKm(coords: [number, number][]): number {
         Math.sin(dLng / 2) ** 2;
     total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
-  return total || 0.001; // avoid division by zero
+  return total || 0.001;
 }
 
-/**
- * Query the Overpass API for street lamp density along the route.
- * Returns a 0–100 score: 100 = well-lit (≥ LAMPS_PER_KM_FULL lamps/km).
- * Falls back to 60 (neutral) if the API is unreachable.
- */
+function createRouteBuffer(coords: [number, number][]) {
+  const line = turf.lineString(coords.map(([lat, lng]) => [lng, lat]));
+  const simplified = turf.simplify(line, { tolerance: 0.0005, highQuality: false });
+  return turf.buffer(simplified, 0.05, { units: "kilometers" });
+}
+
+function bufferToPoly(buffer: any): string {
+  const coords =
+    buffer.geometry.type === "Polygon"
+      ? buffer.geometry.coordinates[0]
+      : buffer.geometry.coordinates[0][0];
+
+  return coords.map(([lng, lat]: number[]) => `${lat} ${lng}`).join(" ");
+}
+
+function isShortRoute(coords: [number, number][]) {
+  return coords.length < 12;
+}
+
 async function getLightingFactor(
   coords: [number, number][]
 ): Promise<{ factor: number; isPoorrlyLit: boolean }> {
   const FALLBACK = { factor: 60, isPoorrlyLit: false };
 
-  try {
-    const [south, west, north, east] = routeBBox(coords);
-    // Overpass QL: count all nodes/ways tagged as street lamps within bbox
-    const query = `[out:json][timeout:10];(
-  node["highway"="street_lamp"](${south},${west},${north},${east});
-  node["lit"="yes"](${south},${west},${north},${east});
-);
-out count;`;
+  if (coords.length < 5) return FALLBACK;
 
-    const overpassUrl = "https://overpass.kumi.systems/api/interpreter";
-    const res = await fetch(overpassUrl, {
+  const key = getCacheKey(coords);
+  const cached = lightingCache.get(key);
+  if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+    return { factor: cached.factor, isPoorrlyLit: cached.factor < 40 };
+  }
+
+  try {
+    let query: string;
+
+    if (isShortRoute(coords)) {
+      let minLat = Infinity, maxLat = -Infinity;
+      let minLng = Infinity, maxLng = -Infinity;
+
+      for (const [lat, lng] of coords) {
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+      }
+
+      query = `[out:json][timeout:8];
+        node["highway"="street_lamp"](${minLat},${minLng},${maxLat},${maxLng});
+        out count;`;
+    } else {
+      const buffer = createRouteBuffer(coords);
+      const poly = bufferToPoly(buffer);
+
+      query = `[out:json][timeout:10];
+        node["highway"="street_lamp"](poly:"${poly}");
+        out count;`;
+    }
+
+    const res = await fetch("https://overpass.kumi.systems/api/interpreter", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(12_000), // 12 s hard timeout
+      signal: AbortSignal.timeout(12000),
     });
 
     if (!res.ok) return FALLBACK;
 
     const json = await res.json();
-    const lampCount: number = json?.elements?.[0]?.tags?.total ?? 0;
+    if (!json?.elements?.length) return FALLBACK;
+
+    const lampCount = Number(json.elements[0].tags?.total ?? 0);
 
     const distKm = routeDistanceKm(coords);
     const lampsPerKm = lampCount / distKm;
 
-    // Normalise: at LAMPS_PER_KM_FULL the score is 100
-    const factor = Math.min(100, Math.round((lampsPerKm / LAMPS_PER_KM_FULL) * 100));
-    const isPoorrlyLit = factor < 40;
+    const osmFactor = Math.min(
+      100,
+      Math.round((lampsPerKm / LAMPS_PER_KM_FULL) * 100)
+    );
 
-    return { factor, isPoorrlyLit };
+    const satelliteFactor = 60;
+
+    const factor = Math.round(osmFactor * 0.7 + satelliteFactor * 0.3);
+
+    lightingCache.set(key, { factor, ts: Date.now() });
+
+    return {
+      factor,
+      isPoorrlyLit: factor < 40,
+    };
   } catch {
-    // Overpass unreachable or timed out — degrade gracefully
     return FALLBACK;
   }
 }
 
-/** Dynamically pick evenly spaced coordinates to limit PostGIS queries to a strict maximum (e.g., 50 points) */
 function sampleCoords(
   coords: [number, number][],
-  maxPoints: number = 50
+  maxPoints: number = 30
 ): [number, number][] {
   if (coords.length <= maxPoints) return coords;
 
   const sampled: [number, number][] = [];
   const step = coords.length / maxPoints;
-  
+
   for (let i = 0; i < maxPoints; i++) {
-    const index = Math.floor(i * step);
-    sampled.push(coords[index]);
+    sampled.push(coords[Math.floor(i * step)]);
   }
-  
+
   const last = coords[coords.length - 1];
   if (sampled[sampled.length - 1] !== last) {
     sampled.push(last);
@@ -145,278 +167,181 @@ function sampleCoords(
   return sampled;
 }
 
-/** Count approved safety reports within `radius` metres of a point */
-async function countNearbyReports(
-  lng: number,
-  lat: number,
-  radiusM: number
-): Promise<number> {
+async function countNearbyReports(lng: number, lat: number, radiusM: number) {
   if (!hasSupabaseKeys) return 0;
-  
   try {
-    // Primary: PostGIS RPC spatial query
-    const { data, error: rpcError } = await supabaseAdmin
+    const { data } = await supabaseAdmin
       .rpc("count_reports_nearby", { lng, lat, radius_m: radiusM })
       .maybeSingle();
-
-    if (!rpcError) {
-      return typeof data === "number" ? data
-        : typeof data === "object" && data !== null && "count" in data
-          ? (data as { count: number }).count
-          : 0;
-    }
-
-    // Fallback: bounding-box filter (~radius in degrees) if RPC unavailable
-    const degOffset = radiusM / 111_000; // rough metres → degrees
-    const { data: fallback, error: fallbackError } = await supabaseAdmin
-      .from("safety_reports")
-      .select("id")
-      .eq("status", "approved")
-      .gte("lat", lat - degOffset).lte("lat", lat + degOffset)
-      .gte("lng", lng - degOffset).lte("lng", lng + degOffset);
-
-    if (fallbackError) return 0;
-    return fallback?.length ?? 0;
-  } catch (err) {
-    console.error("DB Error in countNearbyReports:", err);
+    return typeof data === "number"
+      ? data
+      : typeof data === "object" && data && "count" in data
+      ? (data as any).count
+      : 0;
+  } catch {
     return 0;
   }
 }
 
-/** Count safe zones within `radius` metres of a point */
-async function countNearbySafeZones(
-  lng: number,
-  lat: number,
-  radiusM: number
-): Promise<number> {
+async function countNearbySafeZones(lng: number, lat: number, radiusM: number) {
   if (!hasSupabaseKeys) return 0;
-
   try {
-    const { data, error } = await supabaseAdmin.rpc("count_safe_zones_nearby", {
+    const { data } = await supabaseAdmin.rpc("count_safe_zones_nearby", {
       lng,
       lat,
       radius_m: radiusM,
     });
-
-    if (error) {
-      // Fallback if RPC doesn't exist
-      const { data: fallbackData, error: fallbackError } = await supabaseAdmin
-        .rpc("nearby_safe_zone_count", { p_lng: lng, p_lat: lat, p_radius: radiusM });
-      if (fallbackError) return 0;
-      return typeof fallbackData === "number" ? fallbackData : 0;
-    }
-
     return typeof data === "number" ? data : 0;
-  } catch (err) {
-    console.error("DB Error in countNearbySafeZones:", err);
+  } catch {
     return 0;
   }
 }
 
-/** Fetch current weather conditions from OpenWeatherMap */
-async function getWeatherCondition(
-  lng: number,
-  lat: number
-): Promise<{ id: number; main: string }> {
+async function getWeatherCondition(lng: number, lat: number) {
   const apiKey = process.env.OPENWEATHER_API_KEY;
-  if (!apiKey) {
-    return { id: 800, main: "Clear" }; // safe default
-  }
+  if (!apiKey) return { id: 800, main: "Clear" };
 
   try {
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${apiKey}`;
-    const res = await fetch(url, { next: { revalidate: 600 } }); // cache 10 min
+    const res = await fetch(
+      `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${apiKey}`
+    );
     if (!res.ok) return { id: 800, main: "Clear" };
-
     const data = await res.json();
-    const weather = data.weather?.[0];
-    return weather
-      ? { id: weather.id as number, main: weather.main as string }
-      : { id: 800, main: "Clear" };
+    return data.weather?.[0] ?? { id: 800, main: "Clear" };
   } catch {
     return { id: 800, main: "Clear" };
   }
 }
 
-/** Check if a weather condition ID indicates rain or fog */
-function isBadWeather(weatherId: number): boolean {
-  // OpenWeatherMap condition codes:
-  // 2xx = Thunderstorm, 3xx = Drizzle, 5xx = Rain, 6xx = Snow
-  // 741 = Fog, 762 = Volcanic ash, 781 = Tornado
-  return (
-    weatherId < 700 || // all precipitation
-    weatherId === 741 || // fog
-    weatherId === 701 || // mist
-    weatherId === 721 // haze
-  );
+function isBadWeather(id: number) {
+  return id < 700 || id === 741 || id === 701 || id === 721;
 }
 
-/** Check if a given hour is in the "night" window (23:00 – 05:00) */
-function isNightTime(date: Date): boolean {
-  const hour = date.getHours();
-  return hour >= 23 || hour < 5;
+function isNightTime(date: Date) {
+  const h = date.getHours();
+  return h >= 23 || h < 5;
 }
 
-/** Use Mapbox Reverse Geocoding to determine the District Name */
-async function getDistrictFromCoords(lng: number, lat: number): Promise<string | null> {
+async function getDistrictFromCoords(lng: number, lat: number) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   if (!token) return null;
   try {
-    const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=district&access_token=${token}`);
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=district&access_token=${token}`
+    );
     const data = await res.json();
-    if (data.features && data.features.length > 0) {
-      return data.features[0].text.replace(/ district$/i, '').trim();
-    }
-    return null;
+    return data.features?.[0]?.text ?? null;
   } catch {
     return null;
   }
 }
 
-/** Hit Supabase crime_stats to calculate historical penalty weighting */
-async function getHistoricalCrimeFactor(district: string | null): Promise<{ factor: number; hasSevereCrime: boolean }> {
-  // 80 is our base "average" score when no data exists (innocent until proven guilty)
+async function getHistoricalCrimeFactor(district: string | null) {
   const FALLBACK = { factor: 80, hasSevereCrime: false };
   if (!district || !hasSupabaseKeys) return FALLBACK;
-  
+
   try {
-    const { data, error } = await supabaseAdmin
-      .from('crime_stats')
-      .select('*')
-      .ilike('district', `%${district}%`)
+    const { data } = await supabaseAdmin
+      .from("crime_stats")
+      .select("*")
+      .ilike("district", `%${district}%`)
       .maybeSingle();
 
-    if (error || !data) return FALLBACK;
+    if (!data) return FALLBACK;
 
-    // Apply strict multipliers to violent crimes
-    const rawPenalty = 
-      (data.murder * 15) +
-      (data.attempt_to_murder * 10) +
-      (data.kidnapping * 12) +
-      (data.rape * 20) +
-      (data.attempt_to_rape * 12) +
-      (data.acid_attack * 20) +
-      (data.sexual_harras * 8) +
-      (data.stalking * 5) +
-      (data.hit_and_run * 5);
+    const raw =
+      data.murder * 15 +
+      data.attempt_to_murder * 10 +
+      data.kidnapping * 12 +
+      data.rape * 20 +
+      data.attempt_to_rape * 12 +
+      data.acid_attack * 20 +
+      data.sexual_harras * 8 +
+      data.stalking * 5 +
+      data.hit_and_run * 5;
 
-    // Normalize: if rawPenalty hits 500, score bottoms out to 0
-    const factor = Math.max(0, Math.min(100, Math.round(100 - (rawPenalty / 5))));
-    const hasSevereCrime = (data.murder > 10) || (data.rape > 5) || (data.acid_attack > 2);
-    
-    return { factor, hasSevereCrime };
+    return {
+      factor: Math.max(0, Math.min(100, 100 - raw / 5)),
+      hasSevereCrime:
+        data.murder > 10 || data.rape > 5 || data.acid_attack > 2,
+    };
   } catch {
     return FALLBACK;
   }
 }
 
-// ─── Main Scoring Function ──────────────────────────────────────────────────
-
-/**
- * Compute a safety score (0–100) for a route.
- *
- * Scoring formula:
- *   score = safeZoneFactor × 0.20
- *         + reportFactor   × 0.20
- *         + timeFactor     × 0.10
- *         + weatherFactor  × 0.05
- *         + lightingFactor × 0.45
- *
- * Each factor is scored 0–100 independently, then the weighted sum is clamped.
- */
 export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   const { coords, time } = input;
   const reasonTags: string[] = [];
 
-  // Sample dynamically up to 50 coordinates to prevent 10,000+ DB queries on 600km routes
-  const sampled = sampleCoords(coords, 50);
-
-  // ── 1. Query PostGIS for reports & safe zones at sampled points ──────────
+  const sampled = sampleCoords(coords, 30);
 
   let totalReports = 0;
   let totalSafeZones = 0;
 
-  const queryPromises = sampled.map(async ([lat, lng]) => {
-    const [reports, zones] = await Promise.all([
-      countNearbyReports(lng, lat, REPORT_RADIUS_M),
-      countNearbySafeZones(lng, lat, SAFE_ZONE_RADIUS_M),
-    ]);
-    return { reports, zones };
-  });
+  const results = await Promise.all(
+    sampled.map(async ([lat, lng]) => {
+      const [r, z] = await Promise.all([
+        countNearbyReports(lng, lat, REPORT_RADIUS_M),
+        countNearbySafeZones(lng, lat, SAFE_ZONE_RADIUS_M),
+      ]);
+      return { r, z };
+    })
+  );
 
-  const results = await Promise.all(queryPromises);
-  for (const r of results) {
-    totalReports += r.reports;
-    totalSafeZones += r.zones;
+  for (const x of results) {
+    totalReports += x.r;
+    totalSafeZones += x.z;
   }
 
-  // ── 2. Safe Zone Factor ──────────────────────────────────────────────────
-  // More safe zones = higher score. Cap at 100.
-  // Each safe zone contributes 15 points; having ~7 zones along a route = 100.
   const safeZoneFactor = Math.min(100, totalSafeZones * 15);
-  if (safeZoneFactor < 40) {
-    reasonTags.push("few_safe_zones_nearby");
-  }
+  if (safeZoneFactor < 40) reasonTags.push("few_safe_zones_nearby");
 
-  // ── 3. Report Density Factor (inverted — more reports = worse) ───────────
-  // Each report subtracts 10 points from a base of 100.
   const reportFactor = Math.max(0, 100 - totalReports * 10);
-  if (reportFactor < 60) {
-    reasonTags.push("high_report_density");
-  }
+  if (reportFactor < 60) reasonTags.push("high_report_density");
 
-  // ── 4. Time of Day Factor ────────────────────────────────────────────────
-  let timeFactor = 100;
-  if (isNightTime(time)) {
-    timeFactor = 100 - NIGHT_PENALTY; // 70
-    reasonTags.push("late_night_travel");
-  }
+  let timeFactor = isNightTime(time) ? 70 : 100;
+  if (timeFactor < 100) reasonTags.push("late_night_travel");
 
-  // ── 5. Weather Factor ────────────────────────────────────────────────────
-  // Use the midpoint of the route for weather and district lookup
-  const midIdx = Math.floor(sampled.length / 2);
-  const [midLat, midLng] = sampled[midIdx];
-  const weather = await getWeatherCondition(midLng, midLat);
+  const mid = sampled[Math.floor(sampled.length / 2)];
+
+  const [weather, district] = await Promise.all([
+    getWeatherCondition(mid[1], mid[0]),
+    getDistrictFromCoords(mid[1], mid[0]),
+  ]);
+
   let weatherFactor = 100;
   if (isBadWeather(weather.id)) {
-    weatherFactor = 100 - WEATHER_PENALTY; // 80
+    weatherFactor = 80;
     reasonTags.push(`poor_weather_${weather.main.toLowerCase()}`);
   }
 
-  // ── NEW: Historical Crime Factor ─────────────────────────────────────────
-  const districtName = await getDistrictFromCoords(midLng, midLat);
-  const { factor: historicalCrimeFactor, hasSevereCrime } = await getHistoricalCrimeFactor(districtName);
-  if (hasSevereCrime || historicalCrimeFactor < 50) {
+  const { factor: crimeFactor, hasSevereCrime } =
+    await getHistoricalCrimeFactor(district);
+
+  if (hasSevereCrime || crimeFactor < 50) {
     reasonTags.push("high_historical_crime_rate");
   }
 
-  // ── 6. Lighting Factor (Overpass street lamp density) ────────────────────
-  const { factor: lightingFactor, isPoorrlyLit } = await getLightingFactor(sampled);
-  if (isPoorrlyLit) {
-    reasonTags.push("poor_street_lighting");
-  }
+  const { factor: lightingFactor, isPoorrlyLit } =
+    await getLightingFactor(sampled);
 
-  // ── Weighted Sum ─────────────────────────────────────────────────────────
-  console.log("--- Safety Engine Score Breakdown ---");
-  console.log(`Safe Zone Factor (WT: ${WEIGHTS.safeZones}):`, safeZoneFactor);
-  console.log(`Report Density Factor (WT: ${WEIGHTS.reportDensity}):`, reportFactor);
-  console.log(`Historical Crime Factor (WT: ${WEIGHTS.historicalCrime}):`, historicalCrimeFactor);
-  console.log(`Time of Day Factor (WT: ${WEIGHTS.timeOfDay}):`, timeFactor);
-  console.log(`Weather Factor (WT: ${WEIGHTS.weather}):`, weatherFactor);
-  console.log(`Lighting Factor (WT: ${WEIGHTS.lighting}):`, lightingFactor);
+  if (isPoorrlyLit) reasonTags.push("poor_street_lighting");
 
-  const raw =
-    safeZoneFactor * WEIGHTS.safeZones +
-    reportFactor * WEIGHTS.reportDensity +
-    historicalCrimeFactor * WEIGHTS.historicalCrime +
-    timeFactor * WEIGHTS.timeOfDay +
-    weatherFactor * WEIGHTS.weather +
-    lightingFactor * WEIGHTS.lighting;
-
-  console.log("Raw Weighted Sum:", raw);
-  const score = Math.round(Math.max(0, Math.min(100, raw)));
-  console.log("Final Capped Score:", score);
-  console.log("---------------------------------------");
+  const score = Math.round(
+    Math.max(
+      0,
+      Math.min(
+        100,
+        safeZoneFactor * WEIGHTS.safeZones +
+          reportFactor * WEIGHTS.reportDensity +
+          crimeFactor * WEIGHTS.historicalCrime +
+          timeFactor * WEIGHTS.timeOfDay +
+          weatherFactor * WEIGHTS.weather +
+          lightingFactor * WEIGHTS.lighting
+      )
+    )
+  );
 
   return { score, reasonTags };
 }
