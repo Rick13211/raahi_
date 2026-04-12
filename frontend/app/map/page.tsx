@@ -2,7 +2,9 @@
 
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState, useRef, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
 import { useRouteStore } from '@/lib/store';
 import { fetchRouteData } from '@/lib/routing';
 import LocationAutocomplete from '@/components/UI/LocationAutocomplete';
@@ -10,6 +12,7 @@ import type { SuggestionResult } from '@/components/UI/LocationAutocomplete';
 import RoutePanel from '@/components/Routing/RoutePanel';
 import SOSButton from '@/components/UI/SOSButton';
 import ReportModal from '@/components/Modals/ReportModal';
+import LoginRequiredModal from '@/components/Modals/LoginRequiredModal';
 
 const Map = dynamic(() => import('@/components/Map/MapCanvas'), {
   ssr: false,
@@ -26,11 +29,13 @@ const Map = dynamic(() => import('@/components/Map/MapCanvas'), {
 });
 
 export default function MapPage() {
+  const router = useRouter();
   const [startQuery, setStartQuery] = useState('');
   const [endQuery, setEndQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // Pre-resolved coordinates from autocomplete selection
   // When a user picks a suggestion, we store the exact coords to avoid re-geocoding
@@ -259,7 +264,14 @@ export default function MapPage() {
 
         {/* Report Button at bottom of sidebar */}
         <button
-          onClick={() => setIsReportModalOpen(true)}
+          onClick={async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              setIsReportModalOpen(true);
+            } else {
+              setIsLoginModalOpen(true);
+            }
+          }}
           className="mt-4 w-full py-3 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] hover:bg-white text-sm font-medium text-[#6b7280] hover:text-[#111827] transition-all flex items-center justify-center gap-2"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -283,6 +295,12 @@ export default function MapPage() {
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
+      />
+
+      {/* Login Required Modal */}
+      <LoginRequiredModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
       />
     </main>
   );

@@ -1,7 +1,6 @@
 import React from 'react';
 import Navbar from '@/components/Home/Navbar';
 import Hero from '@/components/Home/Hero';
-import SearchInput from '@/components/Home/SearchInput';
 import FeatureCards from '@/components/Home/FeatureCards';
 
 export default function Home() {
@@ -9,7 +8,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-[#ffffff] text-[#111827] font-sans overflow-hidden relative">
       {/* Background Grid System */}
       <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-30" 
+        className="absolute inset-0 z-0 pointer-events-none opacity-60" 
         style={{
           backgroundImage: 'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
           backgroundSize: '100px 100px'
@@ -21,7 +20,6 @@ export default function Home() {
 
       <main className="flex-1 flex flex-col items-center justify-start w-full relative z-10">
         <Hero />
-        <SearchInput />
         
         {/* Feature Cards below Hero */}
         <div className="w-full relative z-20 px-6 pb-24">

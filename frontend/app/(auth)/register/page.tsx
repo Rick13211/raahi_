@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Button from '@/components/UI/Button';
 
 function getReadableSignUpError(message: string): string {
   const normalized = message.toLowerCase();
@@ -66,16 +67,16 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#fff7ed] flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl border border-[#fed7aa] bg-white shadow-[0_20px_60px_rgba(124,45,18,0.08)] overflow-hidden">
-        <div className="px-6 sm:px-8 pt-8 pb-6 bg-gradient-to-r from-[#9a3412] to-[#ea580c] text-white">
-          <h1 className="text-2xl font-bold tracking-tight">Create Account</h1>
-          <p className="text-sm text-orange-100 mt-1">Join Raahi and start contributing real-time safety reports.</p>
+    <main className="min-h-screen w-full bg-white flex items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-3xl border border-[#e5e7eb] bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-6 sm:px-8 pt-10 pb-2 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-[#111827]">Create Account</h1>
+          <p className="text-base text-[#6b7280] mt-2">Join Raahi and navigate with confidence.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 sm:px-8 py-6 space-y-4">
+        <form onSubmit={handleSubmit} className="px-6 sm:px-8 py-8 space-y-4">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-[#7c2d12] mb-1.5">
+            <label htmlFor="name" className="block text-sm font-semibold text-[#111827] mb-2">
               Name
             </label>
             <input
@@ -84,13 +85,13 @@ export default function RegisterPage() {
               autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-xl border border-[#fdba74] bg-white px-4 py-2.5 text-sm text-[#431407] focus:outline-none focus:ring-4 focus:ring-[#fb923c]/20 focus:border-[#ea580c]"
+              className="w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#111827] focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#2563eb]/10 focus:border-[#2563eb] transition-all"
               placeholder="Your name"
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[#7c2d12] mb-1.5">
+            <label htmlFor="email" className="block text-sm font-semibold text-[#111827] mb-2">
               Email
             </label>
             <input
@@ -100,13 +101,13 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-xl border border-[#fdba74] bg-white px-4 py-2.5 text-sm text-[#431407] focus:outline-none focus:ring-4 focus:ring-[#fb923c]/20 focus:border-[#ea580c]"
+              className="w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#111827] focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#2563eb]/10 focus:border-[#2563eb] transition-all"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[#7c2d12] mb-1.5">
+            <label htmlFor="password" className="block text-sm font-semibold text-[#111827] mb-2">
               Password
             </label>
             <input
@@ -117,13 +118,13 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full rounded-xl border border-[#fdba74] bg-white px-4 py-2.5 text-sm text-[#431407] focus:outline-none focus:ring-4 focus:ring-[#fb923c]/20 focus:border-[#ea580c]"
+              className="w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#111827] focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#2563eb]/10 focus:border-[#2563eb] transition-all"
               placeholder="At least 6 characters"
             />
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#7c2d12] mb-1.5">
+            <label htmlFor="confirmPassword" className="block text-sm font-semibold text-[#111827] mb-2">
               Confirm password
             </label>
             <input
@@ -134,7 +135,7 @@ export default function RegisterPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full rounded-xl border border-[#fdba74] bg-white px-4 py-2.5 text-sm text-[#431407] focus:outline-none focus:ring-4 focus:ring-[#fb923c]/20 focus:border-[#ea580c]"
+              className="w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#111827] focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#2563eb]/10 focus:border-[#2563eb] transition-all"
               placeholder="Repeat password"
             />
           </div>
@@ -151,17 +152,19 @@ export default function RegisterPage() {
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={status === 'submitting'}
-            className="w-full rounded-xl bg-[#ea580c] hover:bg-[#c2410c] disabled:bg-[#fdba74] text-white text-sm font-semibold py-3 transition-colors"
-          >
-            {status === 'submitting' ? 'Creating account...' : 'Sign Up'}
-          </button>
+          <div className="pt-2">
+            <Button
+              type="submit"
+              disabled={status === 'submitting'}
+              className="w-full"
+            >
+              {status === 'submitting' ? 'Creating account...' : 'Sign Up'}
+            </Button>
+          </div>
 
-          <p className="text-sm text-[#7c2d12] text-center pt-2">
+          <p className="text-sm text-[#6b7280] text-center pt-4">
             Already have an account?{' '}
-            <Link href="/login" className="text-[#ea580c] font-semibold hover:underline">
+            <Link href="/login" className="text-[#2563eb] font-semibold hover:underline">
               Sign in
             </Link>
           </p>

@@ -12,12 +12,13 @@ interface ScoreResult {
 }
 
 const WEIGHTS = {
-  safeZones: 0.15,
+  safeZones: 0.10,
   reportDensity: 0.15,
   historicalCrime: 0.20,
   timeOfDay: 0.05,
   weather: 0.05,
-  lighting: 0.40,
+  lighting: 0.35,
+  govAccidents: 0.10,
 } as const;
 
 const NIGHT_PENALTY = 30;
@@ -236,6 +237,207 @@ async function getDistrictFromCoords(lng: number, lat: number) {
   }
 }
 
+// ── Government of India Traffic Accident Data ──────────────────────────────
+// Source: NCRB "State/UTs/City-wise Traffic Accidents" dataset via data.gov.in
+// Fetched through /api/accident server-side proxy to avoid CORS restrictions
+
+// National max for normalizing accident_volume.
+// Value from NCRB 2022 dataset — highest single state/UT total_traffic_accidents___cases.
+// ⚠️  UPDATE THIS if the dataset year changes (check the /api/accident proxy for the resource ID).
+const NATIONAL_MAX_ACCIDENTS = 68236;
+
+const accidentCache = new Map<string, { factor: number; ts: number }>();
+
+/**
+ * Reverse-geocode coordinates to get city and state names for the Gov API
+ * Uses Mapbox reverse geocoding with place (city) and region (state) types
+ */
+async function getCityAndStateFromCoords(
+  lng: number,
+  lat: number
+): Promise<{ city: string | null; state: string | null }> {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token) return { city: null, state: null };
+
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=place,region&access_token=${token}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return { city: null, state: null };
+    const data = await res.json();
+
+    let city: string | null = null;
+    let state: string | null = null;
+
+    for (const feature of data.features ?? []) {
+      if (feature.place_type?.includes("place") && !city) {
+        city = feature.text;
+      }
+      if (feature.place_type?.includes("region") && !state) {
+        state = feature.text;
+      }
+    }
+    return { city, state };
+  } catch {
+    return { city: null, state: null };
+  }
+}
+
+// Known cities in the dataset for fuzzy matching
+const GOV_CITIES = [
+  "Agra", "Ahmedabad", "Amritsar", "Asansol", "Aurangabad", "Bengaluru",
+  "Bhopal", "Chennai", "Coimbatore", "Delhi (city)", "Dhanbad",
+  "Durg Bhilainagar", "Faridabad", "Ghaziabad", "Gwalior", "Hyderabad",
+  "Indore", "Jabalpur", "Jaipur", "Jamshedpur", "Jodhpur", "Kannur",
+  "Kanpur", "Kochi", "Kolkata", "Kollam", "Kota", "Kozhikode",
+  "Lucknow", "Ludhiana", "Madurai", "Malappuram", "Meerut", "Mumbai",
+  "Nagpur", "Nasik", "Patna", "Pune", "Raipur", "Rajkot", "Ranchi",
+  "Srinagar", "Surat", "Thiruvananthapuram", "Thrissur", "Tiruchirappalli",
+  "Vadodara", "Varanasi", "Vasai Virar", "Vijayawada", "Vishakhapatnam",
+];
+
+const GOV_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+  "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan",
+  "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh",
+  "Uttarakhand", "West Bengal", "Andaman and Nicobar Islands",
+  "Chandigarh", "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep",
+  "Puducherry",
+];
+
+// City name aliases: Mapbox names → Gov dataset names
+const CITY_ALIASES: Record<string, string> = {
+  "bangalore": "Bengaluru",
+  "bombay": "Mumbai",
+  "calcutta": "Kolkata",
+  "madras": "Chennai",
+  "new delhi": "Delhi (city)",
+  "delhi": "Delhi (city)",
+  "nashik": "Nasik",
+  "trivandrum": "Thiruvananthapuram",
+  "trichy": "Tiruchirappalli",
+  "vizag": "Vishakhapatnam",
+  "visakhapatnam": "Vishakhapatnam",
+  "prayagraj": "Prayagraj +",
+  "allahabad": "Prayagraj +",
+  "cochin": "Kochi",
+  "calicut": "Kozhikode",
+};
+
+function matchGovName(name: string | null, list: string[]): string | null {
+  if (!name) return null;
+  const lower = name.toLowerCase().trim();
+
+  // 1. Check alias first (Bangalore→Bengaluru, etc.)
+  if (CITY_ALIASES[lower]) return CITY_ALIASES[lower];
+
+  // 2. Exact match (case-insensitive)
+  const exact = list.find((e) => e.toLowerCase() === lower);
+  if (exact) return exact;
+
+  // 3. Safe partial: only check if the input fully contains a dataset name
+  //    e.g. "Durg" input should NOT match "Durg Bhilainagar", but
+  //    "Durg Bhilainagar" input should match "Durg Bhilainagar"
+  //    We do NOT check the reverse (dataset name contains input) to avoid
+  //    false positives like "Nagar" matching "Durg Bhilainagar"
+  const partial = list.find((e) => {
+    const eLower = e.toLowerCase();
+    // Input must contain the full dataset name (not the other way around)
+    return lower.includes(eLower) && eLower.length >= 3;
+  });
+  return partial ?? null;
+}
+
+/**
+ * Fetch accident data via internal /api/accident proxy (server-side)
+ * This avoids CORS issues with the Gov API and validates the returned record
+ */
+async function fetchAccidentRecord(
+  name: string
+): Promise<{ cases: number; injured: number; died: number } | null> {
+  try {
+    // Use internal Next.js API route to proxy the request server-side
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const url = `${baseUrl}/api/accident?name=${encodeURIComponent(name)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rec = data.record;
+    if (!rec) return null;
+
+    return {
+      cases: rec.cases || 0,
+      injured: rec.injured || 0,
+      died: rec.died || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compute a 0–100 safety factor from Gov accident data.
+ * Uses: fatality_rate (40%), injury_rate (30%), normalized volume (30%)
+ * Returns 100 = safest, 0 = most dangerous
+ */
+async function getGovAccidentFactor(
+  lng: number,
+  lat: number
+): Promise<{ factor: number; isHighRisk: boolean }> {
+  const FALLBACK = { factor: 70, isHighRisk: false };
+
+  // Check cache
+  // toFixed(1) gives ~11km resolution — appropriate for city-level accident data
+  const cacheKey = `gov:${lat.toFixed(1)},${lng.toFixed(1)}`;
+  const cached = accidentCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < 10 * 60 * 1000) {
+    return { factor: cached.factor, isHighRisk: cached.factor < 40 };
+  }
+
+  try {
+    const { city, state } = await getCityAndStateFromCoords(lng, lat);
+
+    // Try city-level first, fall back to state-level
+    let record: { cases: number; injured: number; died: number } | null = null;
+    const matchedCity = matchGovName(city, GOV_CITIES);
+    if (matchedCity) {
+      record = await fetchAccidentRecord(matchedCity);
+    }
+
+    if (!record) {
+      const matchedState = matchGovName(state, GOV_STATES);
+      if (matchedState) {
+        record = await fetchAccidentRecord(matchedState);
+      }
+    }
+
+    if (!record || record.cases === 0) {
+      accidentCache.set(cacheKey, { factor: FALLBACK.factor, ts: Date.now() });
+      return FALLBACK;
+    }
+
+    const fatalityRate = Math.min(1, record.died / record.cases);
+    const injuryRate = Math.min(1, record.injured / record.cases);
+    const accidentVolume = Math.min(1, record.cases / NATIONAL_MAX_ACCIDENTS);
+
+    const rawRisk =
+      fatalityRate * 0.4 + injuryRate * 0.3 + accidentVolume * 0.3;
+
+    const factor = Math.round(
+      Math.max(0, Math.min(100, 100 - rawRisk * 100))
+    );
+
+    accidentCache.set(cacheKey, { factor, ts: Date.now() });
+
+    return { factor, isHighRisk: factor < 40 };
+  } catch {
+    return FALLBACK;
+  }
+}
+
 async function getHistoricalCrimeFactor(district: string | null) {
   const FALLBACK = { factor: 80, hasSevereCrime: false };
   if (!district || !hasSupabaseKeys) return FALLBACK;
@@ -305,9 +507,10 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
 
   const mid = sampled[Math.floor(sampled.length / 2)];
 
-  const [weather, district] = await Promise.all([
+  const [weather, district, govAccident] = await Promise.all([
     getWeatherCondition(mid[1], mid[0]),
     getDistrictFromCoords(mid[1], mid[0]),
+    getGovAccidentFactor(mid[1], mid[0]),
   ]);
 
   let weatherFactor = 100;
@@ -328,6 +531,8 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
 
   if (isPoorrlyLit) reasonTags.push("poor_street_lighting");
 
+  if (govAccident.isHighRisk) reasonTags.push("high_traffic_accident_zone");
+
   const score = Math.round(
     Math.max(
       0,
@@ -338,7 +543,8 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
           crimeFactor * WEIGHTS.historicalCrime +
           timeFactor * WEIGHTS.timeOfDay +
           weatherFactor * WEIGHTS.weather +
-          lightingFactor * WEIGHTS.lighting
+          lightingFactor * WEIGHTS.lighting +
+          govAccident.factor * WEIGHTS.govAccidents
       )
     )
   );

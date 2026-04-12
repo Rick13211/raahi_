@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Button from '@/components/UI/Button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,16 +34,16 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#f8fafc] flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-2xl border border-[#e2e8f0] bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] overflow-hidden">
-        <div className="px-6 sm:px-8 pt-8 pb-6 bg-gradient-to-r from-[#0f172a] to-[#1e293b] text-white">
-          <h1 className="text-2xl font-bold tracking-tight">Sign In</h1>
-          <p className="text-sm text-slate-300 mt-1">Access your Raahi account and submit safety reports.</p>
+    <main className="min-h-screen w-full bg-white flex items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-3xl border border-[#e5e7eb] bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-6 sm:px-8 pt-10 pb-2 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-[#111827]">Welcome back</h1>
+          <p className="text-base text-[#6b7280] mt-2">Sign in to your Raahi account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 sm:px-8 py-6 space-y-4">
+        <form onSubmit={handleSubmit} className="px-6 sm:px-8 py-8 space-y-5">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[#334155] mb-1.5">
+            <label htmlFor="email" className="block text-sm font-semibold text-[#111827] mb-2">
               Email
             </label>
             <input
@@ -52,13 +53,13 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-xl border border-[#cbd5e1] bg-white px-4 py-2.5 text-sm text-[#0f172a] focus:outline-none focus:ring-4 focus:ring-[#3b82f6]/15 focus:border-[#3b82f6]"
+              className="w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#111827] focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#2563eb]/10 focus:border-[#2563eb] transition-all"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[#334155] mb-1.5">
+            <label htmlFor="password" className="block text-sm font-semibold text-[#111827] mb-2">
               Password
             </label>
             <input
@@ -69,7 +70,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full rounded-xl border border-[#cbd5e1] bg-white px-4 py-2.5 text-sm text-[#0f172a] focus:outline-none focus:ring-4 focus:ring-[#3b82f6]/15 focus:border-[#3b82f6]"
+              className="w-full rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3 text-sm text-[#111827] focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#2563eb]/10 focus:border-[#2563eb] transition-all"
               placeholder="Enter your password"
             />
           </div>
@@ -80,15 +81,17 @@ export default function LoginPage() {
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={status === 'submitting'}
-            className="w-full rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] disabled:bg-[#93c5fd] text-white text-sm font-semibold py-3 transition-colors"
-          >
-            {status === 'submitting' ? 'Signing in...' : 'Sign In'}
-          </button>
+          <div className="pt-2">
+            <Button
+              type="submit"
+              disabled={status === 'submitting'}
+              className="w-full"
+            >
+              {status === 'submitting' ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </div>
 
-          <p className="text-sm text-[#475569] text-center pt-2">
+          <p className="text-sm text-[#6b7280] text-center pt-4">
             New here?{' '}
             <Link href="/register" className="text-[#2563eb] font-semibold hover:underline">
               Create an account
