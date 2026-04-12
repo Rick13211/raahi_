@@ -31,7 +31,7 @@
 
 Most navigation apps tell you how to get somewhere. Raahi tells you **how safe it is to get there.**
 
-Built specifically for Indian cities, Raahi fetches up to 3 alternate routes for your journey and runs each one through a 7-factor safety scoring engine. You see a **safety score (0–100)** alongside every route — so you can choose between arriving 3 minutes faster or arriving through a well-lit, lower-risk path.
+Built specifically for Indian cities, Raahi fetches up to 3 alternate routes for your journey and runs each one through an **8-factor safety scoring engine**. You see a **safety score (0–100)** alongside every route — so you can choose between arriving 3 minutes faster or arriving through a well-lit, lower-risk path.
 
 Think of it as Google Maps + a local safety awareness layer, powered by community reports, government crime data, OpenStreetMap street lamps, live weather, and more.
 
@@ -57,16 +57,17 @@ Think of it as Google Maps + a local safety awareness layer, powered by communit
 
 ## 🧠 How We Calculate the Safety Score
 
-This is the core of Raahi. Every route receives a score between **0 and 100**, computed by `safetyEngine.ts` (636 lines). The engine runs **7 independent factors** — most in parallel — then combines them into a single weighted score.
+This is the core of Raahi. Every route receives a score between **0 and 100**, computed by `safetyEngine.ts` (~650 lines). The engine runs **8 independent factors** — most in parallel — then combines them into a single weighted score.
 
 ### The Formula
 
 ```
 Safety Score =
-  Street Lighting   × 0.35  +
-  Historical Crime  × 0.20  +
-  Community Reports × 0.15  +
-  Gov. Accidents    × 0.10  +
+  Street Lighting   × 0.30  +
+  Historical Crime  × 0.15  +
+  Gov. Accidents    × 0.15  +
+  Community Reports × 0.10  +
+  Safe Zones        × 0.10  +
   Popular Places    × 0.10  +
   Time of Day       × 0.05  +
   Weather           × 0.05
@@ -76,7 +77,7 @@ Each factor produces a value from 0–100. The weighted sum is clamped to [0, 10
 
 ---
 
-### Factor 1 — 💡 Street Lighting `35% weight`
+### Factor 1 — 💡 Street Lighting `30% weight`
 
 Street lighting is the single strongest predictor of perceived and actual safety on a route, so it carries the highest weight.
 
@@ -95,7 +96,7 @@ Street lighting is the single strongest predictor of perceived and actual safety
 
 ---
 
-### Factor 2 — 🔪 Historical Crime `20% weight`
+### Factor 2 — 🔪 Historical Crime `15% weight`
 
 Uses district-level NCRB (National Crime Records Bureau) data stored in a Supabase table.
 
@@ -108,7 +109,7 @@ Uses district-level NCRB (National Crime Records Bureau) data stored in a Supaba
 
 ---
 
-### Factor 3 — ⚠️ Community Reports `15% weight`
+### Factor 3 — ⚠️ Community Reports `10% weight`
 
 Real-time user-submitted reports from within **150 metres** of the route.
 
@@ -122,7 +123,7 @@ Real-time user-submitted reports from within **150 metres** of the route.
 
 ---
 
-### Factor 4 — 🚗 Government Accident Data `10% weight`
+### Factor 4 — 🚗 Government Accident Data `15% weight`
 
 Uses the **NCRB 2022 traffic accident dataset** from `data.gov.in`, proxied server-side through `/api/accident` to avoid CORS issues.
 
@@ -154,7 +155,24 @@ A base score of +20 is added, clamped to [0, 100]. Urban routes score higher —
 
 ---
 
-### Factor 6 — ⏰ Time of Day `5% weight`
+### Factor 6 — 🚔 Safe Zone Proximity `10% weight`
+
+Measures how close the route passes to verified safe infrastructure like police stations, hospitals, fire stations, and transit hubs.
+
+**How it works:**
+
+1. Each of the 30 sampled route points is checked against the safe zone database within a **300m radius**.
+2. Average nearby zones per point is computed.
+3. `safeZoneFactor = min(100, 30 + avgNearby × 35)` — so 2+ nearby zones per point = 100; zero zones = 30 (baseline).
+4. Additionally, each scored route **dynamically generates** new safe zones along its corridor (every 2–4 km), which accumulate in the database over time.
+
+**Deduction tag:** `few_safe_zones_nearby`
+
+> ⚠️ **Data source:** This factor currently uses a **local mock database** (`mockDB/db.ts`) containing ~80 hand-seeded real police station locations across 13 Indian cities, plus dynamically generated stations along scored routes. It does **not** query a live external API.
+
+---
+
+### Factor 7 — ⏰ Time of Day `5% weight`
 
 Simple but impactful for anyone navigating at night.
 
@@ -165,7 +183,7 @@ Simple but impactful for anyone navigating at night.
 
 ---
 
-### Factor 7 — 🌧️ Weather `5% weight`
+### Factor 8 — 🌧️ Weather `5% weight`
 
 Live conditions at the route midpoint from the **OpenWeather API**.
 
@@ -187,6 +205,28 @@ Live conditions at the route midpoint from the **OpenWeather API**.
 
 ---
 
+## 📡 Data Sources — What's Real vs What's Simulated
+
+Transparency matters. Here's exactly where each data point comes from:
+
+| Factor | Source | Type | Notes |
+|---|---|---|---|
+| **Street Lighting** | Overpass API (OpenStreetMap) | ✅ **Live API** | Queries real `highway=street_lamp` nodes in real-time |
+| **Historical Crime** | Supabase `crime_stats` table | ⚠️ **Seeded data** | Real NCRB crime categories, manually seeded into the database |
+| **Community Reports** | Supabase `user_reports` table | ✅ **Live user data** | Real user-submitted geo-tagged reports via PostGIS |
+| **Gov. Accidents** | data.gov.in NCRB 2022 | ✅ **Live API** | Fetched in real-time via server proxy (`/api/accident`) |
+| **Popular Places** | Route coordinate geometry | ✅ **Computed** | Pure math on route coordinates — no external data needed |
+| **Safe Zones** | `mockDB/db.ts` | 🟡 **Mock / Simulated** | ~80 hand-seeded real police station locations + dynamically generated stations along routes |
+| **Time of Day** | System clock | ✅ **Live** | `new Date()` — no external call |
+| **Weather** | OpenWeather API | ✅ **Live API** | Real-time conditions at route midpoint |
+| **Routing** | OSRM | ✅ **Live API** | Real driving routes with alternatives |
+| **Geocoding** | Mapbox Geocoding v5 | ✅ **Live API** | Autocomplete + reverse geocoding |
+| **SMS / SOS** | Twilio | ✅ **Live API** | Requires Twilio credentials in `.env.local` |
+
+> **Summary:** 6 out of 8 safety factors use live, real-time data sources. Safe Zones uses a local mock database that grows over time as routes are scored. Historical Crime uses real NCRB categories seeded into Supabase.
+
+---
+
 ## 🏗️ Tech Stack
 
 | Layer | Technology |
@@ -203,6 +243,7 @@ Live conditions at the route midpoint from the **OpenWeather API**.
 | Geocoding | Mapbox Geocoding v5 + Nominatim fallback |
 | Accident data | data.gov.in (NCRB 2022) |
 | SMS / SOS | Twilio |
+| Mock safe zones | Local TypeScript DB (`mockDB/db.ts`) |
 | Deployment | Vercel |
 | Charts | Recharts |
 | Geometry | Turf.js |
@@ -236,10 +277,12 @@ frontend/
 │   ├── UI/                       # SOSButton, SafetyScoreBadge, ProfileMenu …
 │   └── Home/                     # Navbar, Hero, FeatureCards
 ├── lib/
-│   ├── safetyEngine.ts           # 🧠 The scoring engine (636 lines)
+│   ├── safetyEngine.ts           # 🧠 The scoring engine (~650 lines)
 │   ├── routing.ts                # OSRM helpers
 │   ├── store.ts                  # Zustand state
 │   └── supabase.ts               # Two Supabase clients
+├── mockDB/
+│   └── db.ts                     # 🟡 Mock safe zone database (grows at runtime)
 ├── hooks/useGeolocation.ts       # GPS watcher
 └── types/index.ts                # Shared TypeScript interfaces
 ```
@@ -419,12 +462,13 @@ Then open your Vercel project → **Settings → Environment Variables** → add
 
 | | |
 |---|---|
-| Total source files | 44 |
-| Lines of code | ~5,500 |
-| Safety scoring factors | 7 |
+| Total source files | 45 |
+| Lines of code | ~6,000 |
+| Safety scoring factors | 8 |
 | External APIs integrated | 9 |
 | Supabase tables | 7 |
 | API endpoints | 10 |
+| Mock safe zone seeds | 80+ |
 
 ---
 

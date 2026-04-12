@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
 import { getRoutesFromCoordinates } from "@/lib/routing";
 import { scoreRoute } from "@/lib/safetyEngine";
+import { getAllSafeZones } from "@/mockDB/db";
 import type { ScoredRoute } from "@/types";
 
 const LatLngSchema = z.object({
@@ -57,7 +58,16 @@ export async function POST(request: NextRequest) {
     scored.sort((a, b) => b.safetyScore - a.safetyScore);
     if (scored.length > 0) scored[0].isSafest = true;
 
-    return NextResponse.json(scored);
+    // Collect all safe zones (seed + generated during scoring) for map display
+    const safeZones = getAllSafeZones().map((z) => ({
+      id: z.id,
+      name: z.name,
+      type: z.type,
+      lat: z.lat,
+      lng: z.lng,
+    }));
+
+    return NextResponse.json({ routes: scored, safeZones });
   } catch (error) {
     console.error("[POST /api/routes/score]", error);
     return NextResponse.json(

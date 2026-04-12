@@ -47,6 +47,7 @@ export default function MapPage() {
   const setOrigin = useRouteStore((state) => state.setOrigin);
   const setDestination = useRouteStore((state) => state.setDestination);
   const setRoutes = useRouteStore((state) => state.setRoutes);
+  const setSafeZones = useRouteStore((state) => state.setSafeZones);
   const setActiveRouteIndex = useRouteStore((state) => state.setActiveRouteIndex);
   const userLocation = useRouteStore((state) => state.userLocation);
 
@@ -168,9 +169,13 @@ export default function MapPage() {
 
       const scored = await scoreRes.json();
 
-      if (scored && scored.length > 0) {
-        setRoutes(scored);
+      if (scored?.routes && scored.routes.length > 0) {
+        setRoutes(scored.routes);
         setActiveRouteIndex(0);
+        // Store safe zones for map markers
+        if (scored.safeZones) {
+          setSafeZones(scored.safeZones);
+        }
       } else {
         setErrorMsg('No routes found between these locations.');
       }

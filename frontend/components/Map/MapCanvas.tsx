@@ -88,6 +88,7 @@ export default function MapCanvas() {
   const routes = useRouteStore((state) => state.routes);
   const activeRouteIndex = useRouteStore((state) => state.activeRouteIndex);
   const userLocation = useRouteStore((state) => state.userLocation);
+  const safeZones = useRouteStore((state) => state.safeZones);
 
   // Mount the geolocation listener
   useGeolocation();
@@ -102,6 +103,7 @@ export default function MapCanvas() {
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const originMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const safeZoneMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   // Track how many route layers currently exist for stale removal
   const prevRouteCount = useRef(0);
@@ -431,6 +433,44 @@ export default function MapCanvas() {
     return () => clearTimeout(timer);
   }, [origin, destination, routes, activeRouteIndex, userLocation]);
 
+  // ── Safe Zone markers (police stations, hospitals, etc.) ────────────────
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+
+    // Remove previous safe zone markers
+    for (const m of safeZoneMarkersRef.current) m.remove();
+    safeZoneMarkersRef.current = [];
+
+    if (safeZones.length === 0) return;
+
+    for (const zone of safeZones) {
+      // Subtle color by type
+      const dotColor =
+        zone.type === 'police_station' ? '#3b82f6' :
+        zone.type === 'hospital' ? '#ef4444' :
+        zone.type === 'fire_station' ? '#f59e0b' :
+        '#059669';
+
+      const typeEmoji =
+        zone.type === 'police_station' ? '🚔' :
+        zone.type === 'hospital' ? '🏥' :
+        zone.type === 'fire_station' ? '🚒' :
+        zone.type === 'railway_station' ? '🚉' : '🚏';
+
+      // Tiny 12px dot — no border, just a subtle filled circle
+      const el = document.createElement('div');
+      el.style.cssText = `width:10px;height:10px;border-radius:50%;background:${dotColor};opacity:0.55;cursor:default;`;
+      el.title = `${typeEmoji} ${zone.name}`;
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([zone.lng, zone.lat])
+        .addTo(map);
+
+      safeZoneMarkersRef.current.push(marker);
+    }
+  }, [safeZones]);
+
   // ── Locate Me handler ──────────────────────────────────────────────────────
   const handleLocateMe = useCallback(() => {
     if (!mapRef.current || !userLocation) return;
@@ -475,6 +515,17 @@ export default function MapCanvas() {
         >
           <LocateFixed className="w-5 h-5" />
         </button>
+      )}
+
+      {/* Safe Zone Legend */}
+      {safeZones.length > 0 && (
+        <div className="absolute bottom-4 left-3 z-[1000] bg-white/90 backdrop-blur-sm rounded-lg shadow-sm border border-gray-200/60 px-3 py-2 text-[10px] space-y-1">
+          <span className="font-bold text-[#374151] uppercase tracking-wider block mb-1">Nearby</span>
+          <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#3b82f6] inline-block" />Police Station</div>
+          <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#ef4444] inline-block" />Hospital</div>
+          <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#f59e0b] inline-block" />Fire Station</div>
+          <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#059669] inline-block" />Transit</div>
+        </div>
       )}
     </div>
   );

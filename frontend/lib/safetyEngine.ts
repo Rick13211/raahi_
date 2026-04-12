@@ -1,5 +1,6 @@
 import { supabaseAdmin, hasSupabaseKeys } from "@/lib/supabase";
 import * as turf from "@turf/turf";
+import { generateSafeZonesAlongRoute, countSafeZonesNearby } from "@/mockDB/db";
 
 interface ScoreInput {
   coords: [number, number][];
@@ -12,14 +13,17 @@ interface ScoreResult {
 }
 
 const WEIGHTS = {
-  popularPlaces: 0.10,
-  reportDensity: 0.15,
-  historicalCrime: 0.20,
-  timeOfDay: 0.05,
-  weather: 0.05,
-  lighting: 0.35,
-  govAccidents: 0.10,
-} as const;
+  safeZones: 0.10,       // 10%  — proximity to police stations, hospitals (mock DB)
+  popularPlaces: 0.10,   // 10%  — geometry-based footfall proxy
+  reportDensity: 0.10,   // 10%  — community reports within 150m
+  historicalCrime: 0.15,  // 15%  — NCRB crime data by district
+  timeOfDay: 0.05,       //  5%  — night penalty (11pm-5am)
+  weather: 0.05,         //  5%  — rain/fog/storm penalty
+  lighting: 0.30,        // 30%  — street lamp density from OSM
+  govAccidents: 0.15,    // 15%  — NCRB traffic accident data
+} as const;              // 100% total
+
+const SAFE_ZONE_RADIUS_M = 300;  // meters — search radius for nearby safe zones
 
 const NIGHT_PENALTY = 30;
 const WEATHER_PENALTY = 20;
@@ -45,8 +49,8 @@ function routeDistanceKm(coords: [number, number][]): number {
     const a =
       Math.sin(dLat / 2) ** 2 +
       Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLng / 2) ** 2;
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
     total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
   return total || 0.001;
@@ -176,8 +180,8 @@ async function countNearbyReports(lng: number, lat: number, radiusM: number) {
     return typeof data === "number"
       ? data
       : typeof data === "object" && data && "count" in data
-      ? (data as any).count
-      : 0;
+        ? (data as any).count
+        : 0;
   } catch {
     return 0;
   }
@@ -470,8 +474,8 @@ function haversineMeters(
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -610,12 +614,27 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
 
   const popularPlacesFactor = getPopularPlacesScore(coords);
 
+  // ── Safe Zone proximity (mock DB — generates + counts, zero async) ──────
+  // Step 1: Generate police stations along this route (grows DB over time)
+  generateSafeZonesAlongRoute(coords);
+
+  // Step 2: Count how many safe zones are near each sampled point
+  let totalSafeZones = 0;
+  for (const [lat, lng] of sampled) {
+    totalSafeZones += countSafeZonesNearby(lat, lng, SAFE_ZONE_RADIUS_M);
+  }
+  const avgSafeZones = totalSafeZones / sampled.length;
+  // Scoring: 2+ zones per sample point = 100, 0 zones = 30 (baseline)
+  const safeZoneFactor = Math.min(100, Math.round(30 + avgSafeZones * 35));
+  if (safeZoneFactor < 50) reasonTags.push("few_safe_zones_nearby");
+
   const score = Math.round(
     Math.max(
       0,
       Math.min(
         100,
-        popularPlacesFactor * WEIGHTS.popularPlaces +
+        safeZoneFactor * WEIGHTS.safeZones +
+          popularPlacesFactor * WEIGHTS.popularPlaces +
           reportFactor * WEIGHTS.reportDensity +
           crimeFactor * WEIGHTS.historicalCrime +
           timeFactor * WEIGHTS.timeOfDay +
@@ -627,6 +646,7 @@ export async function scoreRoute(input: ScoreInput): Promise<ScoreResult> {
   );
 
   console.log("[scoreRoute]", {
+    safeZoneFactor, totalSafeZones, avgSafeZones: +avgSafeZones.toFixed(2),
     popularPlacesFactor, reportFactor, crimeFactor, timeFactor,
     weatherFactor, lightingFactor, govAccidentFactor: govAccident.factor,
     score,
