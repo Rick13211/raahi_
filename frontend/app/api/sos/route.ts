@@ -2,11 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod/v4";
 import { supabaseAdmin } from "@/lib/supabase";
+import twilio from "twilio";
 
-// NOTE: Twilio & SendGrid are stubbed until credentials are configured.
-// Install when ready: npm install twilio @sendgrid/mail
-// Then add to .env.local: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
-//   TWILIO_FROM_NUMBER, SENDGRID_API_KEY
+// NOTE: Twilio requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER in .env.local
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -17,7 +15,6 @@ const SOSRequestSchema = z.object({
 });
 
 // ─── Helper: extract Supabase auth user ──────────────────────────────────────
-
 
 async function getAuthUser(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -34,7 +31,7 @@ async function getAuthUser(request: NextRequest) {
 }
 
 // ─── POST /api/sos ───────────────────────────────────────────────────────────
-// Auth required. Sends SOS SMS + email to all emergency contacts.
+// Auth required. Sends SOS SMS to all emergency phone contacts using Twilio.
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,23 +87,60 @@ export async function POST(request: NextRequest) {
     }
 
     const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
-    const smsBody = `🚨 SOS ALERT from SafeStep AI!\nYour contact needs help. Their current location:\n${mapsLink}\n\nPlease check on them immediately or call emergency services.`;
+    const smsBody = `🚨 SOS ALERT! Your contact needs help. Their location:\n${mapsLink}\n\nPlease check on them immediately or call emergency services.`;
 
-    // ── STUB: Replace with real Twilio/SendGrid when credentials are ready ────
-    console.warn("[SOS STUB] Would send alerts to:", contacts);
-    console.warn("[SOS STUB] Message:", smsBody);
-    for (const contact of contacts) {
-      if (contact.includes("@")) {
-        console.log(`[SOS STUB] Email → ${contact}`);
-      } else {
-        console.log(`[SOS STUB] SMS → ${contact}`);
-      }
+    // Filter to only phone numbers and ensure they have a leading '+' sign
+    const phoneContacts = contacts
+      .filter((contact) => !contact.includes("@"))
+      .map((contact) => (contact.startsWith("+") ? contact : `+${contact}`));
+
+    if (phoneContacts.length === 0) {
+      return NextResponse.json(
+        { error: "No valid phone numbers found for emergency contacts" },
+        { status: 400 }
+      );
     }
-    // ─────────────────────────────────────────────────────────────────────────
+
+    // Initialize Twilio
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const fromNumber = process.env.TWILIO_FROM_NUMBER;
+
+    if (!accountSid || !authToken || !fromNumber) {
+      return NextResponse.json(
+        { error: "SMS service is not fully configured on the server." },
+        { status: 500 }
+      );
+    }
+
+    const client = twilio(accountSid, authToken);
+
+    // Send SMS via Twilio using Promise.allSettled to not fail if one number is invalid
+    const smsPromises = phoneContacts.map((contact) =>
+      client.messages.create({
+        body: smsBody,
+        from: fromNumber,
+        to: contact,
+      })
+    );
+
+    const results = await Promise.allSettled(smsPromises);
+
+    // Check if any succeeded
+    const succeedCount = results.filter((r) => r.status === "fulfilled").length;
+
+    if (succeedCount === 0) {
+      console.error("[POST /api/sos] All SMS sending failed:", results);
+      return NextResponse.json(
+        { error: "Failed to deliver SMS to any contact." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       sent: true,
-      contactCount: contacts.length,
+      contactCount: succeedCount,
+      totalAttempted: phoneContacts.length,
     });
   } catch (error) {
     console.error("[POST /api/sos]", error);
