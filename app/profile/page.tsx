@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import Image from 'next/image';
 
 // ── Indian states list for the dropdown ──────────────────────────────────────
 const INDIAN_STATES = [
@@ -222,7 +223,7 @@ export default function UserDashboard() {
                 >
                   {imagePreview ? (
                     <>
-                      <img src={imagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
+                      <Image src={imagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
                       <button
                         onClick={(e) => { e.stopPropagation(); clearImage(); }}
                         className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white transition-colors"
@@ -419,7 +420,7 @@ function ReportCard({ report }: { report: DashboardReport }) {
     <div className="rounded-xl border border-[#e5e7eb] bg-[#f9fafb] overflow-hidden hover:shadow-md transition-shadow group">
       {report.image_url && (
         <div className="h-36 overflow-hidden">
-          <img
+          <Image
             src={report.image_url}
             alt="Report"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
