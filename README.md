@@ -253,7 +253,7 @@ Transparency matters. Here's exactly where each data point comes from:
 ## 📁 Project Structure
 
 ```
-frontend/
+/
 ├── app/
 │   ├── page.tsx                  # Landing page
 │   ├── map/page.tsx              # Main app — search, score, navigate
@@ -305,13 +305,12 @@ frontend/
 
 ```bash
 git clone https://github.com/your-username/raahi.git
-cd raahi/frontend
 npm install
 ```
 
 ### Step 2 — Create `.env.local`
 
-Inside `frontend/`, create `.env.local`:
+Inside `f/`, create `.env.local`:
 
 ```env
 # Supabase — Dashboard → Settings → API
@@ -436,7 +435,6 @@ If you want to deploy your own fork:
 
 ```bash
 npm install -g vercel
-cd frontend
 vercel
 ```
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import Image from 'next/image';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -203,7 +204,7 @@ export default function AdminDashboard() {
                       <tr key={report.id} className="hover:bg-[#f9fafb] transition-colors">
                         <td className="px-6 py-4">
                           {report.image_url ? (
-                            <img
+                            <Image
                               src={report.image_url}
                               alt=""
                               className="w-14 h-14 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity border border-[#e5e7eb]"
@@ -245,7 +246,7 @@ export default function AdminDashboard() {
                 {reports.map((report) => (
                   <div key={report.id} className="rounded-xl border border-[#e5e7eb] bg-[#f9fafb] overflow-hidden">
                     {report.image_url && (
-                      <img
+                      <Image
                         src={report.image_url}
                         alt=""
                         className="w-full h-40 object-cover cursor-pointer"
@@ -284,7 +285,7 @@ export default function AdminDashboard() {
           onClick={() => setPreviewImage(null)}
         >
           <div className="relative max-w-3xl max-h-[85vh]">
-            <img src={previewImage} alt="Full preview" className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain" />
+            <Image src={previewImage} alt="Full preview" className="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain" />
             <button
               onClick={() => setPreviewImage(null)}
               className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center text-[#374151] hover:bg-[#f3f4f6] transition-colors"

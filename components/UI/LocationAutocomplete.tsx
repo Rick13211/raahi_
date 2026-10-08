@@ -96,7 +96,7 @@ export default function LocationAutocomplete({
     } finally {
       setIsLoading(false);
     }
-  }, [proximity]);
+  }, []);
 
   // ── Debounced input handler ─────────────────────────────────────────────
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
